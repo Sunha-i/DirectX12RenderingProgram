@@ -19,11 +19,16 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Game.cpp" />
+    <ClInclude Include="Common.h" />
+    <ClInclude Include="Game\Game.h" />
+    <ClInclude Include="Renderer\Renderer.h" />
+    <ClInclude Include="Window\BaseWindow.h" />
+    <ClInclude Include="Window\MainWindow.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Common.h" />
-    <ClInclude Include="Game.h" />
+    <ClCompile Include="Game\Game.cpp" />
+    <ClCompile Include="Renderer\Renderer.cpp" />
+    <ClCompile Include="Window\MainWindow.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
@@ -129,7 +134,7 @@
 copy "$(TargetDir)" "$(SolutionDir)..\Library\x64\Debug"</Command>
     </PostBuildEvent>
     <Lib>
-      <AdditionalDependencies>d3d12.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;dxgi.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Lib>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -155,7 +160,7 @@ copy "$(TargetDir)" "$(SolutionDir)..\Library\x64\Debug"</Command>
 copy "$(TargetDir)" "$(SolutionDir)..\Library\x64\Release"</Command>
     </PostBuildEvent>
     <Lib>
-      <AdditionalDependencies>d3d12.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;dxgi.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Lib>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
