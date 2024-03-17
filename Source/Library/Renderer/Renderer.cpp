@@ -5,11 +5,15 @@ Renderer::Renderer()
 	, m_pCommandQueue()
 	, m_pSwapChain()
 	, m_pRtvHeap()
+	, m_pRootSignature()
+	, m_pPipelineState()
 	, m_pCommandList()
 	, m_uRtvDescriptorSize(0)
 	, m_uFrameIndex(0)
 	, m_hFenceEvent()
 	, m_uFenceValue(0)
+	, m_pVertexBuffer()
+	, m_vertexBufferView()
 {
 }
 
@@ -21,6 +25,18 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 	GetClientRect(hWnd, &rc);
 	UINT uWidth = static_cast<UINT>(rc.right - rc.left);
 	UINT uHeight = static_cast<UINT>(rc.bottom - rc.top);
+
+	// Setup the viewport
+	m_viewport.TopLeftX = 0.0f;
+	m_viewport.TopLeftY = 0.0f;
+	m_viewport.Width = static_cast<FLOAT>(uWidth);
+	m_viewport.Height = static_cast<FLOAT>(uHeight);
+
+	// Set scissorRect
+	m_scissorRect.left = 0;
+	m_scissorRect.top = 0;
+	m_scissorRect.right = static_cast<LONG>(uWidth);
+	m_scissorRect.bottom = static_cast<LONG>(uHeight);
 
 	DWORD dwDebugFactoryFlags = 0;
 
@@ -250,8 +266,95 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 
 	// =============loading pipeline completed, start to load assets=============
 
+
+	// Create an empty root signature
+	{
+		CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
+		rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+		ComPtr<ID3DBlob> signature;
+		ComPtr<ID3DBlob> error;
+		hr = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
+		if (FAILED(hr))
+		{
+			return hr;
+		}
+
+		hr = m_pDevice->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(m_pRootSignature.ReleaseAndGetAddressOf()));
+		if (FAILED(hr))
+		{
+			return hr;
+		}
+#ifdef _DEBUG
+		m_pRootSignature->SetName(L"Renderer::m_pRootSignature");
+#endif
+	}
+
+	// Read the compiled shaders
+	ComPtr<ID3DBlob> pVertexShader;
+	ComPtr<ID3DBlob> pPixelShader;
+	{
+#if defined(_DEBUG)
+		UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+		UINT compileFlags = 0;
+#endif
+		hr = D3DCompileFromFile(L"../Library/Shader.fx", nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, pVertexShader.GetAddressOf(), nullptr);
+		if (FAILED(hr))
+		{
+			return hr;
+		}
+		hr = D3DCompileFromFile(L"../Library/Shader.fx", nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, pPixelShader.GetAddressOf(), nullptr);
+		if (FAILED(hr))
+		{
+			return hr;
+		}
+	}
+
+	// Define the vertex input layout
+	D3D12_INPUT_ELEMENT_DESC aInputElementDescs[] =
+	{
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+	};
+
+	// Create a PSO description, then create the object
+	{
+		// Describe and create the graphics pipeline state object (PSO).
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc =
+		{
+			.pRootSignature = m_pRootSignature.Get(),
+			.VS = CD3DX12_SHADER_BYTECODE(pVertexShader.Get()),
+			.PS = CD3DX12_SHADER_BYTECODE(pPixelShader.Get()),
+			.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT),
+			.SampleMask = UINT_MAX,
+			.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT),
+			.DepthStencilState =
+			{
+				.DepthEnable = FALSE,
+				.StencilEnable = FALSE
+			},
+			.InputLayout = { aInputElementDescs, ARRAYSIZE(aInputElementDescs) },
+			.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
+			.NumRenderTargets = 1,
+			.RTVFormats = { DXGI_FORMAT_R8G8B8A8_UNORM, },
+			.SampleDesc =
+			{
+				.Count = 1,
+			},
+		};
+		hr = m_pDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(m_pPipelineState.ReleaseAndGetAddressOf()));
+		if (FAILED(hr))
+		{
+			return hr;
+		}
+#ifdef _DEBUG
+		m_pPipelineState->SetName(L"Renderer::m_pPipelineState");
+#endif
+	}
+
 	// Create the command list
-	hr = m_pDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_pCommandAllocator.Get(), nullptr, IID_PPV_ARGS(m_pCommandList.ReleaseAndGetAddressOf()));
+	hr = m_pDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_pCommandAllocator.Get(), m_pPipelineState.Get(), IID_PPV_ARGS(m_pCommandList.ReleaseAndGetAddressOf()));
 	if (FAILED(hr))
 	{
 		return hr;
@@ -261,26 +364,77 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 	{
 		return hr;
 	}
-	
-	// Create synchronization objects
-	hr = m_pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(m_pFence.ReleaseAndGetAddressOf()));
-	if (FAILED(hr))
+
+	// Create the vertex buffer
 	{
-		return hr;
-	}
-	m_uFenceValue = 1;
-	
-	// Create an event handle to use for frame synchronization
-	m_hFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-	if (m_hFenceEvent == nullptr)
-	{
-		hr = HRESULT_FROM_WIN32(GetLastError());
+		Vertex triangleVertices[] =
+		{
+			{ { 0.0f, 0.25f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
+			{ { 0.25f, -0.25f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
+			{ { -0.25f, -0.25f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } }
+		};
+
+		const UINT vertexBufferSize = sizeof(triangleVertices);
+
+		CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
+		CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize);
+		hr = m_pDevice->CreateCommittedResource(
+			&heapProperties,
+			D3D12_HEAP_FLAG_NONE,
+			&resourceDesc,
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr,
+			IID_PPV_ARGS(&m_pVertexBuffer)
+		);
 		if (FAILED(hr))
 		{
 			return hr;
 		}
+
+		// Copy the triangle data to the vertex buffer
+		UINT8* pVertexDataBegin;
+		CD3DX12_RANGE readRange(0, 0);
+		hr = m_pVertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin));
+		if (FAILED(hr))
+		{
+			return hr;
+		}
+		memcpy(pVertexDataBegin, triangleVertices, vertexBufferSize);
+		m_pVertexBuffer->Unmap(0, nullptr);
+
+		// Initialize the vertex buffer view
+		m_vertexBufferView =
+		{
+			.BufferLocation = m_pVertexBuffer->GetGPUVirtualAddress(),
+			.SizeInBytes = vertexBufferSize,
+			.StrideInBytes = sizeof(Vertex),
+		};
 	}
 
+	// Create synchronization objects
+	{
+		hr = m_pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(m_pFence.ReleaseAndGetAddressOf()));
+		if (FAILED(hr))
+		{
+			return hr;
+		}
+		m_uFenceValue = 1;
+
+		// Create an event handle to use for frame synchronization
+		m_hFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+		if (m_hFenceEvent == nullptr)
+		{
+			hr = HRESULT_FROM_WIN32(GetLastError());
+			if (FAILED(hr))
+			{
+				return hr;
+			}
+		}
+
+		// Wait until assets have been uploaded to the GPU
+		WaitForPreviousFrame();
+	}
+	
 	return S_OK;
 }
 
@@ -291,7 +445,12 @@ void Renderer::Render()
 	m_pCommandAllocator->Reset();
 
 	// Command list can be reset at any time and must be before re-recording
-	m_pCommandList->Reset(m_pCommandAllocator.Get(), nullptr);
+	m_pCommandList->Reset(m_pCommandAllocator.Get(), m_pPipelineState.Get());
+
+	// Set necessary state
+	m_pCommandList->SetGraphicsRootSignature(m_pRootSignature.Get());
+	m_pCommandList->RSSetViewports(1, &m_viewport);
+	m_pCommandList->RSSetScissorRects(1, &m_scissorRect);
 
 	// Indicate that the back buffer will be used as a render target
 	D3D12_RESOURCE_BARRIER preCopyBarriers1 = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -302,10 +461,14 @@ void Renderer::Render()
 	m_pCommandList->ResourceBarrier(1, &preCopyBarriers1);
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_pRtvHeap->GetCPUDescriptorHandleForHeapStart(), m_uFrameIndex, m_uRtvDescriptorSize);
+	m_pCommandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 
 	// Record commands into the command list
 	const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
 	m_pCommandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+	m_pCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	m_pCommandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
+	m_pCommandList->DrawInstanced(3, 1, 0, 0);
 
 	// Indicate that the back buffer will now be used to present
 	D3D12_RESOURCE_BARRIER preCopyBarriers2 = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -325,6 +488,11 @@ void Renderer::Render()
 	// Present the frame
 	m_pSwapChain->Present(1, 0);
 
+	WaitForPreviousFrame();
+}
+
+void Renderer::WaitForPreviousFrame()
+{
 	// Signal and increment the fence value
 	const UINT64 uFence = m_uFenceValue;
 	m_pCommandQueue->Signal(m_pFence.Get(), uFence);
