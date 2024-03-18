@@ -5,6 +5,7 @@ Renderer::Renderer()
 	, m_pCommandQueue()
 	, m_pSwapChain()
 	, m_pRtvHeap()
+	, m_pCbvHeap()
 	, m_pRootSignature()
 	, m_pPipelineState()
 	, m_pCommandList()
@@ -13,7 +14,10 @@ Renderer::Renderer()
 	, m_hFenceEvent()
 	, m_uFenceValue(0)
 	, m_pVertexBuffer()
+	, m_pConstantBuffer()
 	, m_vertexBufferView()
+	, m_constantBufferData()
+	, m_upCbvDataBegin()
 {
 }
 
@@ -225,19 +229,36 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 	}
 
 	// Create descriptor heaps
-	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc =
 	{
-		.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV,
-		.NumDescriptors = NUM_FRAME_BUFFERS,
-		.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE,
-	};
+		// Describe and create a render target view (RTV) descriptor heap
+		D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc =
+		{
+			.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV,
+			.NumDescriptors = NUM_FRAME_BUFFERS,
+			.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE,
+		};
 
-	hr = m_pDevice->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(m_pRtvHeap.ReleaseAndGetAddressOf()));
-	if (FAILED(hr))
-	{
-		return hr;
+		hr = m_pDevice->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(m_pRtvHeap.ReleaseAndGetAddressOf()));
+		if (FAILED(hr))
+		{
+			return hr;
+		}
+		m_uRtvDescriptorSize = m_pDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+		// Describe and create a constant buffer view (CBV) descriptor heap
+		D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc =
+		{
+			.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
+			.NumDescriptors = 1,
+			.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
+		};
+
+		hr = m_pDevice->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(m_pCbvHeap.ReleaseAndGetAddressOf()));
+		if (FAILED(hr))
+		{
+			return hr;
+		}
 	}
-	m_uRtvDescriptorSize = m_pDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
 	// Create frame resources
 	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_pRtvHeap->GetCPUDescriptorHandleForHeapStart());
@@ -267,19 +288,39 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 	// =============loading pipeline completed, start to load assets=============
 
 
-	// Create an empty root signature
+	// Create a root signature consisting of a descriptor table with a single CBV
 	{
-		CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
-		rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+		D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
+		featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
+
+		if (FAILED(m_pDevice->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &featureData, sizeof(featureData))))
+		{
+			featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
+		}
+
+		CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
+		CD3DX12_ROOT_PARAMETER1 rootParameters[1];
+
+		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+		rootParameters[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
+
+		D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
+			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+			D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
+			D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+			D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
+			D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+
+		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+		rootSignatureDesc.Init_1_1(_countof(rootParameters), rootParameters, 0, nullptr, rootSignatureFlags);
 
 		ComPtr<ID3DBlob> signature;
 		ComPtr<ID3DBlob> error;
-		hr = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
+		hr = D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, featureData.HighestVersion, &signature, &error);
 		if (FAILED(hr))
 		{
 			return hr;
 		}
-
 		hr = m_pDevice->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(m_pRootSignature.ReleaseAndGetAddressOf()));
 		if (FAILED(hr))
 		{
@@ -411,6 +452,43 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 		};
 	}
 
+	// Create the constant buffer
+	{
+		const UINT uConstantBufferSize = sizeof(SceneConstantBuffer);
+
+		CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
+		CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(uConstantBufferSize);
+		hr = m_pDevice->CreateCommittedResource(
+			&heapProperties,
+			D3D12_HEAP_FLAG_NONE,
+			&resourceDesc,
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr,
+			IID_PPV_ARGS(&m_pConstantBuffer)
+		);
+		if (FAILED(hr))
+		{
+			return hr;
+		}
+
+		// Describe and create a constant buffer view
+		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc =
+		{
+			.BufferLocation = m_pConstantBuffer->GetGPUVirtualAddress(),
+			.SizeInBytes = uConstantBufferSize
+		};
+		m_pDevice->CreateConstantBufferView(&cbvDesc, m_pCbvHeap->GetCPUDescriptorHandleForHeapStart());
+
+		// Map and initialize
+		CD3DX12_RANGE readRange(0, 0);
+		hr = m_pConstantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&m_upCbvDataBegin));
+		if (FAILED(hr))
+		{
+			return hr;
+		}
+		memcpy(m_upCbvDataBegin, &m_constantBufferData, sizeof(m_constantBufferData));
+	}
+
 	// Create synchronization objects
 	{
 		hr = m_pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(m_pFence.ReleaseAndGetAddressOf()));
@@ -438,6 +516,19 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 	return S_OK;
 }
 
+void Renderer::Update()
+{
+	const float translationSpeed = 0.005f;
+	const float offsetBounds = 1.25f;
+
+	m_constantBufferData.offset.x += translationSpeed;
+	if (m_constantBufferData.offset.x > offsetBounds)
+	{
+		m_constantBufferData.offset.x = -offsetBounds;
+	}
+	memcpy(m_upCbvDataBegin, &m_constantBufferData, sizeof(m_constantBufferData));
+}
+
 void Renderer::Render()
 {
 	// This can only be reset when the associated command lists have finished execution
@@ -449,6 +540,11 @@ void Renderer::Render()
 
 	// Set necessary state
 	m_pCommandList->SetGraphicsRootSignature(m_pRootSignature.Get());
+
+	ID3D12DescriptorHeap* ppHeaps[] = { m_pCbvHeap.Get() };
+	m_pCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+	m_pCommandList->SetGraphicsRootDescriptorTable(0, m_pCbvHeap->GetGPUDescriptorHandleForHeapStart());
+
 	m_pCommandList->RSSetViewports(1, &m_viewport);
 	m_pCommandList->RSSetScissorRects(1, &m_scissorRect);
 
@@ -464,7 +560,7 @@ void Renderer::Render()
 	m_pCommandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 
 	// Record commands into the command list
-	const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
+	const float clearColor[] = { 0.6f, 0.7f, 0.8f, 1.0f };
 	m_pCommandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 	m_pCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	m_pCommandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);

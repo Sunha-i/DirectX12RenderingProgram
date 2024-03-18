@@ -12,6 +12,7 @@ public:
 
 	HRESULT InitDevice(_In_ HWND hWnd);
 
+	void Update();
 	void Render();
 	void WaitForPreviousFrame();
 
@@ -25,6 +26,7 @@ private:
 	ComPtr<ID3D12CommandQueue> m_pCommandQueue;
 	ComPtr<IDXGISwapChain3> m_pSwapChain;
 	ComPtr<ID3D12DescriptorHeap> m_pRtvHeap;
+	ComPtr<ID3D12DescriptorHeap> m_pCbvHeap;
 	ComPtr<ID3D12Resource> m_apRenderTargets[NUM_FRAME_BUFFERS];
 	ComPtr<ID3D12CommandAllocator> m_pCommandAllocator;
 	ComPtr<ID3D12RootSignature> m_pRootSignature;
@@ -34,7 +36,10 @@ private:
 
 	// App resources
 	ComPtr<ID3D12Resource> m_pVertexBuffer;
+	ComPtr<ID3D12Resource> m_pConstantBuffer;
 	D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
+	SceneConstantBuffer m_constantBufferData;
+	UINT8* m_upCbvDataBegin;
 
 	// Synchronization objects
 	UINT m_uFrameIndex;
