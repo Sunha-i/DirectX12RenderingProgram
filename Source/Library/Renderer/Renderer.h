@@ -14,7 +14,8 @@ public:
 
 	void Update();
 	void Render();
-	void WaitForPreviousFrame();
+	void WaitForGpu();
+	void MoveToNextFrame();
 
 private:
 	static const UINT NUM_FRAME_BUFFERS = 2;
@@ -28,7 +29,7 @@ private:
 	ComPtr<ID3D12DescriptorHeap> m_pRtvHeap;
 	ComPtr<ID3D12DescriptorHeap> m_pCbvHeap;
 	ComPtr<ID3D12Resource> m_apRenderTargets[NUM_FRAME_BUFFERS];
-	ComPtr<ID3D12CommandAllocator> m_pCommandAllocator;
+	ComPtr<ID3D12CommandAllocator> m_apCommandAllocators[NUM_FRAME_BUFFERS];
 	ComPtr<ID3D12RootSignature> m_pRootSignature;
 	ComPtr<ID3D12PipelineState> m_pPipelineState;
 	ComPtr<ID3D12GraphicsCommandList> m_pCommandList;
@@ -45,5 +46,5 @@ private:
 	UINT m_uFrameIndex;
 	HANDLE m_hFenceEvent;
 	ComPtr<ID3D12Fence> m_pFence;
-	UINT64 m_uFenceValue;
+	UINT64 m_auFenceValues[NUM_FRAME_BUFFERS];
 };

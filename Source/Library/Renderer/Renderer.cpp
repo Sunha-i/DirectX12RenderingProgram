@@ -12,7 +12,6 @@ Renderer::Renderer()
 	, m_uRtvDescriptorSize(0)
 	, m_uFrameIndex(0)
 	, m_hFenceEvent()
-	, m_uFenceValue(0)
 	, m_pVertexBuffer()
 	, m_pConstantBuffer()
 	, m_vertexBufferView()
@@ -261,29 +260,33 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 	}
 
 	// Create frame resources
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_pRtvHeap->GetCPUDescriptorHandleForHeapStart());
-
-	// Create a RTV for each frame
-	for (UINT n = 0; n < NUM_FRAME_BUFFERS; n++)
 	{
-		hr = m_pSwapChain->GetBuffer(n, IID_PPV_ARGS(&m_apRenderTargets[n]));
-		if (FAILED(hr))
+		CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_pRtvHeap->GetCPUDescriptorHandleForHeapStart());
+
+		// Create a RTV & a command allocator for each frame
+		for (UINT uBackBufferIdx = 0; uBackBufferIdx < NUM_FRAME_BUFFERS; ++uBackBufferIdx)
 		{
-			return hr;
-		}
-		m_pDevice->CreateRenderTargetView(m_apRenderTargets[n].Get(), nullptr, rtvHandle);
-		rtvHandle.Offset(1, m_uRtvDescriptorSize);
-	}
+			hr = m_pSwapChain->GetBuffer(uBackBufferIdx, IID_PPV_ARGS(&m_apRenderTargets[uBackBufferIdx]));
+			if (FAILED(hr))
+			{
+				return hr;
+			}
+			m_pDevice->CreateRenderTargetView(m_apRenderTargets[uBackBufferIdx].Get(), nullptr, rtvHandle);
+			rtvHandle.Offset(1, m_uRtvDescriptorSize);
 
-	// Create command allocator
-	hr = m_pDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(m_pCommandAllocator.ReleaseAndGetAddressOf()));
-	if (FAILED(hr))
-	{
-		return hr;
-	}
+			hr = m_pDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(m_apCommandAllocators[uBackBufferIdx].ReleaseAndGetAddressOf()));
+			if (FAILED(hr))
+			{
+				return hr;
+			}
 #ifdef _DEBUG
-	m_pCommandAllocator->SetName(L"Renderer::m_pCommandAllocator");
+			WCHAR szCommandAllocatorName[64] = { L'\0',};
+			swprintf_s(szCommandAllocatorName, L"Renderer::m_apCommandAllocators[%u]", uBackBufferIdx);
+
+			m_apCommandAllocators[uBackBufferIdx]->SetName(szCommandAllocatorName);
 #endif
+		}
+	}
 
 	// =============loading pipeline completed, start to load assets=============
 
@@ -395,7 +398,7 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 	}
 
 	// Create the command list
-	hr = m_pDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_pCommandAllocator.Get(), m_pPipelineState.Get(), IID_PPV_ARGS(m_pCommandList.ReleaseAndGetAddressOf()));
+	hr = m_pDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_apCommandAllocators[m_uFrameIndex].Get(), m_pPipelineState.Get(), IID_PPV_ARGS(m_pCommandList.ReleaseAndGetAddressOf()));
 	if (FAILED(hr))
 	{
 		return hr;
@@ -491,12 +494,12 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 
 	// Create synchronization objects
 	{
-		hr = m_pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(m_pFence.ReleaseAndGetAddressOf()));
+		hr = m_pDevice->CreateFence(m_auFenceValues[m_uFrameIndex], D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(m_pFence.ReleaseAndGetAddressOf()));
 		if (FAILED(hr))
 		{
 			return hr;
 		}
-		m_uFenceValue = 1;
+		m_auFenceValues[m_uFrameIndex]++;
 
 		// Create an event handle to use for frame synchronization
 		m_hFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
@@ -509,8 +512,8 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 			}
 		}
 
-		// Wait until assets have been uploaded to the GPU
-		WaitForPreviousFrame();
+		// Wait for pending GPU work to complete
+		WaitForGpu();
 	}
 	
 	return S_OK;
@@ -533,10 +536,10 @@ void Renderer::Render()
 {
 	// This can only be reset when the associated command lists have finished execution
 	// ; use fences to determine GPU progress
-	m_pCommandAllocator->Reset();
+	m_apCommandAllocators[m_uFrameIndex]->Reset();
 
 	// Command list can be reset at any time and must be before re-recording
-	m_pCommandList->Reset(m_pCommandAllocator.Get(), m_pPipelineState.Get());
+	m_pCommandList->Reset(m_apCommandAllocators[m_uFrameIndex].Get(), m_pPipelineState.Get());
 
 	// Set necessary state
 	m_pCommandList->SetGraphicsRootSignature(m_pRootSignature.Get());
@@ -584,22 +587,40 @@ void Renderer::Render()
 	// Present the frame
 	m_pSwapChain->Present(1, 0);
 
-	WaitForPreviousFrame();
+	// Prepare to render the next frame
+	MoveToNextFrame();
 }
 
-void Renderer::WaitForPreviousFrame()
+void Renderer::WaitForGpu()
 {
-	// Signal and increment the fence value
-	const UINT64 uFence = m_uFenceValue;
+	// Schedule a Signal command
+	const UINT64 uFence = m_auFenceValues[m_uFrameIndex];
 	m_pCommandQueue->Signal(m_pFence.Get(), uFence);
-	m_uFenceValue++;
 
-	// Wait until the previous frame is finished
+	// Wait until the fence has been processed
+	m_pFence->SetEventOnCompletion(uFence, m_hFenceEvent);
+	WaitForSingleObject(m_hFenceEvent, INFINITE);
+
+	// Increment the value for current frame
+	m_auFenceValues[m_uFrameIndex]++;
+}
+
+void Renderer::MoveToNextFrame()
+{
+	// Schedule a Signal command
+	const UINT64 uFence = m_auFenceValues[m_uFrameIndex];
+	m_pCommandQueue->Signal(m_pFence.Get(), uFence);
+
+	// Update the frame index
+	m_uFrameIndex = m_pSwapChain->GetCurrentBackBufferIndex();
+
+	// Wait until the next frame is ready to be rendered
 	if (m_pFence->GetCompletedValue() < uFence)
 	{
 		m_pFence->SetEventOnCompletion(uFence, m_hFenceEvent);
 		WaitForSingleObject(m_hFenceEvent, INFINITE);
 	}
 
-	m_uFrameIndex = m_pSwapChain->GetCurrentBackBufferIndex();
+	// Set the value for the next frame
+	m_auFenceValues[m_uFrameIndex]++;
 }
