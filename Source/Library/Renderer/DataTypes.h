@@ -8,8 +8,9 @@ struct Vertex
 	XMFLOAT4 color;
 };
 
-struct SceneConstantBuffer
+struct ConstantBuffer
 {
-	XMFLOAT4 offset;
-	float padding[60];		// Padding so the Constant Buffer is 256-byte aligned
+	XMMATRIX world;
+	XMMATRIX view;
+	XMMATRIX projection;
 };

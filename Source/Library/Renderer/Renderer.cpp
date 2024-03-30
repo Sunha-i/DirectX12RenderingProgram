@@ -5,7 +5,6 @@ Renderer::Renderer()
 	, m_pCommandQueue()
 	, m_pSwapChain()
 	, m_pRtvHeap()
-	, m_pCbvHeap()
 	, m_pRootSignature()
 	, m_pPipelineState()
 	, m_pCommandList()
@@ -13,10 +12,13 @@ Renderer::Renderer()
 	, m_uFrameIndex(0)
 	, m_hFenceEvent()
 	, m_pVertexBuffer()
-	, m_pConstantBuffer()
+	, m_pIndexBuffer()
 	, m_vertexBufferView()
-	, m_constantBufferData()
-	, m_upCbvDataBegin()
+	, m_indexBufferView()
+	, m_fCurRotationAngleRad(0.0f)
+	, m_worldMatrix()
+	, m_viewMatrix()
+	, m_projectionMatrix()
 {
 }
 
@@ -40,6 +42,18 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 	m_scissorRect.top = 0;
 	m_scissorRect.right = static_cast<LONG>(uWidth);
 	m_scissorRect.bottom = static_cast<LONG>(uHeight);
+
+	// Initialize the world matrix
+	m_worldMatrix = XMMatrixIdentity();
+
+	// Initialize the view matrix
+	static const XMVECTOR eye = XMVectorSet(0.0f, 3.0f, -10.0f, 0.0f);
+	static const XMVECTOR at = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+	static const XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+	m_viewMatrix = XMMatrixLookAtLH(eye, at, up);
+
+	// Initialize the projection matrix
+	m_projectionMatrix = XMMatrixPerspectiveFovLH(XM_PIDIV4, uWidth / (FLOAT)uHeight, 0.01f, 100.0f);
 
 	DWORD dwDebugFactoryFlags = 0;
 
@@ -236,27 +250,12 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 			.NumDescriptors = NUM_FRAME_BUFFERS,
 			.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE,
 		};
-
 		hr = m_pDevice->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(m_pRtvHeap.ReleaseAndGetAddressOf()));
 		if (FAILED(hr))
 		{
 			return hr;
 		}
 		m_uRtvDescriptorSize = m_pDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-
-		// Describe and create a constant buffer view (CBV) descriptor heap
-		D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc =
-		{
-			.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
-			.NumDescriptors = 1,
-			.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
-		};
-
-		hr = m_pDevice->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(m_pCbvHeap.ReleaseAndGetAddressOf()));
-		if (FAILED(hr))
-		{
-			return hr;
-		}
 	}
 
 	// Create frame resources
@@ -301,11 +300,8 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 			featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
 		}
 
-		CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
 		CD3DX12_ROOT_PARAMETER1 rootParameters[1];
-
-		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
-		rootParameters[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
+		rootParameters[0].InitAsConstantBufferView(0, 0);
 
 		D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
@@ -332,6 +328,34 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 #ifdef _DEBUG
 		m_pRootSignature->SetName(L"Renderer::m_pRootSignature");
 #endif
+	}
+
+	// Create the constant buffer memory and map the resource
+	{
+		const D3D12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
+		size_t cbSize = NUM_DRAW_CALLS * NUM_FRAME_BUFFERS * sizeof(ConstantBuffer);
+
+		const D3D12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(cbSize);
+		hr = m_pDevice->CreateCommittedResource(
+			&heapProperties,
+			D3D12_HEAP_FLAG_NONE,
+			&resourceDesc,
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr,
+			IID_PPV_ARGS(m_pPerFrameConstants.ReleaseAndGetAddressOf())
+		);
+		if (FAILED(hr))
+		{
+			return hr;
+		}
+		hr = m_pPerFrameConstants->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedConstantData));
+		if (FAILED(hr))
+		{
+			return hr;
+		}
+
+		// GPU virtual address of the resource
+		m_constantDataGpuAddr = m_pPerFrameConstants->GetGPUVirtualAddress();
 	}
 
 	// Read the compiled shaders
@@ -411,17 +435,30 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 
 	// Create the vertex buffer
 	{
-		Vertex triangleVertices[] =
+		Vertex cubeVertices[] =
 		{
-			{ { 0.0f, 0.25f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
-			{ { 0.25f, -0.25f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
-			{ { -0.25f, -0.25f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } }
+			{ .position = XMFLOAT3(-1.0f, 1.0f, -1.0f), 
+			  .color = XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) },
+			{ .position = XMFLOAT3(1.0f, 1.0f, -1.0f), 
+			  .color = XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f) },
+			{ .position = XMFLOAT3(1.0f, 1.0f, 1.0f), 
+			  .color = XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f) },
+			{ .position = XMFLOAT3(-1.0f, 1.0f, 1.0f), 
+			  .color = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) },
+			{ .position = XMFLOAT3(-1.0f, -1.0f, -1.0f), 
+			  .color = XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f) },
+			{ .position = XMFLOAT3(1.0f, -1.0f, -1.0f), 
+			  .color = XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f) },
+			{ .position = XMFLOAT3(1.0f, -1.0f, 1.0f), 
+			  .color = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f) },
+			{ .position = XMFLOAT3(-1.0f, -1.0f, 1.0f), 
+			  .color = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f) },
 		};
+		const UINT vertexBufferSize = sizeof(cubeVertices);
 
-		const UINT vertexBufferSize = sizeof(triangleVertices);
-
-		CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
-		CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize);
+		// Create committed resource for vertex buffer
+		const CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
+		const CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize);
 		hr = m_pDevice->CreateCommittedResource(
 			&heapProperties,
 			D3D12_HEAP_FLAG_NONE,
@@ -435,7 +472,7 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 			return hr;
 		}
 
-		// Copy the triangle data to the vertex buffer
+		// Copy the cube data to the vertex buffer
 		UINT8* pVertexDataBegin;
 		CD3DX12_RANGE readRange(0, 0);
 		hr = m_pVertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin));
@@ -443,7 +480,7 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 		{
 			return hr;
 		}
-		memcpy(pVertexDataBegin, triangleVertices, vertexBufferSize);
+		memcpy(pVertexDataBegin, cubeVertices, vertexBufferSize);
 		m_pVertexBuffer->Unmap(0, nullptr);
 
 		// Initialize the vertex buffer view
@@ -455,41 +492,53 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 		};
 	}
 
-	// Create the constant buffer
+	// Create the index buffer
 	{
-		const UINT uConstantBufferSize = sizeof(SceneConstantBuffer);
+		static WORD cubeIndices[] =
+		{
+			3, 1, 0, 2, 1, 3,	// TOP
+			0, 5, 4, 1, 5, 0,	// FRONT
+			3, 4, 7, 0, 4, 3,	// RIGHT
+			1, 6, 5, 2, 6, 1,	// LEFT
+			2, 7, 6, 3, 7, 2,	// BACK
+			6, 4, 5, 7, 4, 6,	// BOTTOM
+		};
+		const UINT indexBufferSize = sizeof(cubeIndices);
 
-		CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
-		CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(uConstantBufferSize);
+		// Create committed resource for index buffer
+		const CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
+		const CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize);
 		hr = m_pDevice->CreateCommittedResource(
 			&heapProperties,
 			D3D12_HEAP_FLAG_NONE,
 			&resourceDesc,
 			D3D12_RESOURCE_STATE_GENERIC_READ,
 			nullptr,
-			IID_PPV_ARGS(&m_pConstantBuffer)
+			IID_PPV_ARGS(&m_pIndexBuffer)
 		);
 		if (FAILED(hr))
 		{
 			return hr;
 		}
 
-		// Describe and create a constant buffer view
-		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc =
-		{
-			.BufferLocation = m_pConstantBuffer->GetGPUVirtualAddress(),
-			.SizeInBytes = uConstantBufferSize
-		};
-		m_pDevice->CreateConstantBufferView(&cbvDesc, m_pCbvHeap->GetCPUDescriptorHandleForHeapStart());
-
-		// Map and initialize
+		// Copy array of index data to upload buffer
+		UINT8* pIndexDataBegin;
 		CD3DX12_RANGE readRange(0, 0);
-		hr = m_pConstantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&m_upCbvDataBegin));
+		hr = m_pIndexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pIndexDataBegin));
 		if (FAILED(hr))
 		{
 			return hr;
 		}
-		memcpy(m_upCbvDataBegin, &m_constantBufferData, sizeof(m_constantBufferData));
+		memcpy(pIndexDataBegin, cubeIndices, indexBufferSize);
+		m_pIndexBuffer->Unmap(0, nullptr);
+
+		// Initialize the index buffer view
+		m_indexBufferView =
+		{
+			.BufferLocation = m_pIndexBuffer->GetGPUVirtualAddress(),
+			.SizeInBytes = indexBufferSize,
+			.Format = DXGI_FORMAT_R16_UINT,
+		};
 	}
 
 	// Create synchronization objects
@@ -521,15 +570,17 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 
 void Renderer::Update()
 {
-	const float translationSpeed = 0.005f;
-	const float offsetBounds = 1.25f;
+	const float rotationSpeed = 0.015f;
 
-	m_constantBufferData.offset.x += translationSpeed;
-	if (m_constantBufferData.offset.x > offsetBounds)
+	// Update the rotation constant
+	m_fCurRotationAngleRad += rotationSpeed;
+	if (m_fCurRotationAngleRad >= XM_2PI)
 	{
-		m_constantBufferData.offset.x = -offsetBounds;
+		m_fCurRotationAngleRad -= XM_2PI;
 	}
-	memcpy(m_upCbvDataBegin, &m_constantBufferData, sizeof(m_constantBufferData));
+
+	// Rotate the cube around the Y-axis
+	m_worldMatrix = XMMatrixRotationY(m_fCurRotationAngleRad);
 }
 
 void Renderer::Render()
@@ -541,15 +592,26 @@ void Renderer::Render()
 	// Command list can be reset at any time and must be before re-recording
 	m_pCommandList->Reset(m_apCommandAllocators[m_uFrameIndex].Get(), m_pPipelineState.Get());
 
-	// Set necessary state
+	// Set the graphics RS to be used by this frame
 	m_pCommandList->SetGraphicsRootSignature(m_pRootSignature.Get());
-
-	ID3D12DescriptorHeap* ppHeaps[] = { m_pCbvHeap.Get() };
-	m_pCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-	m_pCommandList->SetGraphicsRootDescriptorTable(0, m_pCbvHeap->GetGPUDescriptorHandleForHeapStart());
-
 	m_pCommandList->RSSetViewports(1, &m_viewport);
 	m_pCommandList->RSSetScissorRects(1, &m_scissorRect);
+
+	// Index into the available cbs based on the number of draw calls
+	unsigned int constantBufferIndex = NUM_DRAW_CALLS * (m_uFrameIndex % NUM_FRAME_BUFFERS);
+	ConstantBuffer cb = {};
+
+	// Shaders compiled with default transformation matrices
+	cb.world = XMMatrixTranspose(m_worldMatrix);
+	cb.view = XMMatrixTranspose(m_viewMatrix);
+	cb.projection = XMMatrixTranspose(m_projectionMatrix);
+
+	// Set the constants for the first draw call
+	memcpy(&m_mappedConstantData[constantBufferIndex], &cb, sizeof(ConstantBuffer));
+
+	// Bind the constants to the shader
+	auto baseGpuAddress = m_constantDataGpuAddr + sizeof(ConstantBuffer) * constantBufferIndex;
+	m_pCommandList->SetGraphicsRootConstantBufferView(0, baseGpuAddress);
 
 	// Indicate that the back buffer will be used as a render target
 	D3D12_RESOURCE_BARRIER preCopyBarriers1 = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -567,7 +629,8 @@ void Renderer::Render()
 	m_pCommandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 	m_pCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	m_pCommandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
-	m_pCommandList->DrawInstanced(3, 1, 0, 0);
+	m_pCommandList->IASetIndexBuffer(&m_indexBufferView);
+	m_pCommandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
 
 	// Indicate that the back buffer will now be used to present
 	D3D12_RESOURCE_BARRIER preCopyBarriers2 = CD3DX12_RESOURCE_BARRIER::Transition(

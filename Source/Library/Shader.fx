@@ -1,7 +1,8 @@
-cbuffer SceneConstantBuffer : register(b0)
+cbuffer ConstantBuffer : register(b0)
 {
-    float4 offset;
-    float4 padding[15];
+    matrix world;
+    matrix view;
+    matrix projection;
 }
 
 struct PSInput
@@ -12,12 +13,14 @@ struct PSInput
 
 PSInput VSMain(float4 position : POSITION, float4 color : COLOR)
 {
-    PSInput result;
+    PSInput output = (PSInput)0;
 
-    result.position = position + offset;
-    result.color = color;
+    output.position = mul(position, world);
+    output.position = mul(output.position, view);
+    output.position = mul(output.position, projection);
+    output.color = color;
 
-    return result;
+    return output;
 }
 
 float4 PSMain(PSInput input) : SV_TARGET
