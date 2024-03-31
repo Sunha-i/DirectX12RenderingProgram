@@ -28,6 +28,8 @@ private:
 	ComPtr<ID3D12CommandQueue> m_pCommandQueue;
 	ComPtr<IDXGISwapChain3> m_pSwapChain;
 	ComPtr<ID3D12DescriptorHeap> m_pRtvHeap;
+	ComPtr<ID3D12DescriptorHeap> m_pDsvHeap;
+	ComPtr<ID3D12Resource> m_pDepthStencil;
 	ComPtr<ID3D12Resource> m_apRenderTargets[NUM_FRAME_BUFFERS];
 	ComPtr<ID3D12CommandAllocator> m_apCommandAllocators[NUM_FRAME_BUFFERS];
 	ComPtr<ID3D12RootSignature> m_pRootSignature;

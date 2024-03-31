@@ -5,6 +5,7 @@ Renderer::Renderer()
 	, m_pCommandQueue()
 	, m_pSwapChain()
 	, m_pRtvHeap()
+	, m_pDsvHeap()
 	, m_pRootSignature()
 	, m_pPipelineState()
 	, m_pCommandList()
@@ -256,6 +257,19 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 			return hr;
 		}
 		m_uRtvDescriptorSize = m_pDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+		// Describe and create a depth stencil view (DSV) descriptor heap
+		D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc =
+		{
+			.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV,
+			.NumDescriptors = 1,
+			.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE,
+		};
+		hr = m_pDevice->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(m_pDsvHeap.ReleaseAndGetAddressOf()));
+		if (FAILED(hr))
+		{
+			return hr;
+		}
 	}
 
 	// Create frame resources
@@ -285,6 +299,32 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 			m_apCommandAllocators[uBackBufferIdx]->SetName(szCommandAllocatorName);
 #endif
 		}
+	}
+
+	// Create the depth stencil view
+	{
+		D3D12_DEPTH_STENCIL_VIEW_DESC depthStencilDesc =
+		{
+			.Format = DXGI_FORMAT_D32_FLOAT,
+			.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D,
+			.Flags = D3D12_DSV_FLAG_NONE,
+		};
+		const CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_DEFAULT);
+		const CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D32_FLOAT, uWidth, uHeight, 1, 0, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL | D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE);
+		const CD3DX12_CLEAR_VALUE clearVal(DXGI_FORMAT_D32_FLOAT, 1.0f, 0);
+		hr = m_pDevice->CreateCommittedResource(
+			&heapProperties,
+			D3D12_HEAP_FLAG_NONE,
+			&resourceDesc,
+			D3D12_RESOURCE_STATE_DEPTH_WRITE,
+			&clearVal,
+			IID_PPV_ARGS(m_pDepthStencil.ReleaseAndGetAddressOf())
+		);
+		if (FAILED(hr))
+		{
+			return hr;
+		}
+		m_pDevice->CreateDepthStencilView(m_pDepthStencil.Get(), &depthStencilDesc, m_pDsvHeap->GetCPUDescriptorHandleForHeapStart());
 	}
 
 	// =============loading pipeline completed, start to load assets=============
@@ -397,11 +437,7 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 			.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT),
 			.SampleMask = UINT_MAX,
 			.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT),
-			.DepthStencilState =
-			{
-				.DepthEnable = FALSE,
-				.StencilEnable = FALSE
-			},
+			.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT),
 			.InputLayout = { aInputElementDescs, ARRAYSIZE(aInputElementDescs) },
 			.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
 			.NumRenderTargets = 1,
@@ -622,14 +658,40 @@ void Renderer::Render()
 	m_pCommandList->ResourceBarrier(1, &preCopyBarriers1);
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_pRtvHeap->GetCPUDescriptorHandleForHeapStart(), m_uFrameIndex, m_uRtvDescriptorSize);
-	m_pCommandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(m_pDsvHeap->GetCPUDescriptorHandleForHeapStart());
+	m_pCommandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
 
-	// Record commands into the command list
+	// Clear render target & depth buffer
 	const float clearColor[] = { 0.6f, 0.7f, 0.8f, 1.0f };
 	m_pCommandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+	m_pCommandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
+	// Set up the input assembler
 	m_pCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	m_pCommandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
 	m_pCommandList->IASetIndexBuffer(&m_indexBufferView);
+
+	// Draw the first cube
+	m_pCommandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
+	baseGpuAddress += sizeof(ConstantBuffer);
+	++constantBufferIndex;
+
+	// Update the World matrix of the second cube
+	XMMATRIX mSpin = XMMatrixRotationX(m_fCurRotationAngleRad);
+	XMMATRIX mScale = XMMatrixScaling(0.2f, 0.2f, 0.2f);
+	XMMATRIX mOrbit = XMMatrixRotationY(-2.0f * m_fCurRotationAngleRad);
+	XMMATRIX mTranslate = XMMatrixTranslation(0.0f, 0.0f, -5.0f);
+
+	// Update the world variable to reflect the current light
+	cb.world = XMMatrixTranspose(mScale * mSpin * mTranslate * mOrbit);
+
+	// Set the constants for the draw call
+	memcpy(&m_mappedConstantData[constantBufferIndex], &cb, sizeof(ConstantBuffer));
+
+	// Bind the constants to the shader
+	m_pCommandList->SetGraphicsRootConstantBufferView(0, baseGpuAddress);
+
+	// Draw the second cube
 	m_pCommandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
 
 	// Indicate that the back buffer will now be used to present
