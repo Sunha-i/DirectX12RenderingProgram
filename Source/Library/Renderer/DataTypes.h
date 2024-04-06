@@ -4,13 +4,16 @@
 
 struct Vertex
 {
-	XMFLOAT3 position;
-	XMFLOAT4 color;
+	XMFLOAT3 Position;
+	XMFLOAT3 Normal;
 };
 
 struct ConstantBuffer
 {
-	XMMATRIX world;
-	XMMATRIX view;
-	XMMATRIX projection;
+	XMMATRIX World;
+	XMMATRIX View;
+	XMMATRIX Projection;
+	XMFLOAT4 LightDirs[2];
+	XMFLOAT4 LightColors[2];
+	XMFLOAT4 OutputColor;
 };

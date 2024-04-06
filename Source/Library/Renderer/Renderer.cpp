@@ -7,7 +7,8 @@ Renderer::Renderer()
 	, m_pRtvHeap()
 	, m_pDsvHeap()
 	, m_pRootSignature()
-	, m_pPipelineState()
+	, m_pLambertPipelineState()
+	, m_pSolidPipelineState()
 	, m_pCommandList()
 	, m_uRtvDescriptorSize(0)
 	, m_uFrameIndex(0)
@@ -55,6 +56,15 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 
 	// Initialize the projection matrix
 	m_projectionMatrix = XMMatrixPerspectiveFovLH(XM_PIDIV4, uWidth / (FLOAT)uHeight, 0.01f, 100.0f);
+
+	// Initialize the lighting parameters
+	m_avLightDirs[0] = XMFLOAT4(-0.577f, 0.577f, -0.577f, 0.0f);
+	m_avLightDirs[1] = XMFLOAT4(0.0f, 0.0f, -1.0f, 0.0f);
+	m_avLightColors[0] = XMFLOAT4(0.9f, 0.9f, 0.9f, 1.0f);
+	m_avLightColors[1] = XMFLOAT4(0.8f, 0.0f, 0.0f, 1.0f);
+
+	// Initialize the scene output color
+	m_vOutputColor = XMFLOAT4(0, 0, 0, 0);
 
 	DWORD dwDebugFactoryFlags = 0;
 
@@ -347,8 +357,7 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
 			D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
 			D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
-			D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
-			D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+			D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS;
 
 		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
 		rootSignatureDesc.Init_1_1(_countof(rootParameters), rootParameters, 0, nullptr, rootSignatureFlags);
@@ -399,20 +408,26 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 	}
 
 	// Read the compiled shaders
-	ComPtr<ID3DBlob> pVertexShader;
-	ComPtr<ID3DBlob> pPixelShader;
+	ComPtr<ID3DBlob> pTriangleVS;
+	ComPtr<ID3DBlob> pLambertPS;
+	ComPtr<ID3DBlob> pSolidColorPS;
 	{
 #if defined(_DEBUG)
 		UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #else
 		UINT compileFlags = 0;
 #endif
-		hr = D3DCompileFromFile(L"../Library/Shader.fx", nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, pVertexShader.GetAddressOf(), nullptr);
+		hr = D3DCompileFromFile(L"../Library/Shader.fx", nullptr, nullptr, "VSTriangle", "vs_5_0", compileFlags, 0, pTriangleVS.GetAddressOf(), nullptr);
 		if (FAILED(hr))
 		{
 			return hr;
 		}
-		hr = D3DCompileFromFile(L"../Library/Shader.fx", nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, pPixelShader.GetAddressOf(), nullptr);
+		hr = D3DCompileFromFile(L"../Library/Shader.fx", nullptr, nullptr, "PSLambert", "ps_5_0", compileFlags, 0, pLambertPS.GetAddressOf(), nullptr);
+		if (FAILED(hr))
+		{
+			return hr;
+		}
+		hr = D3DCompileFromFile(L"../Library/Shader.fx", nullptr, nullptr, "PSSolid", "ps_5_0", compileFlags, 0, pSolidColorPS.GetAddressOf(), nullptr);
 		if (FAILED(hr))
 		{
 			return hr;
@@ -423,17 +438,17 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 	D3D12_INPUT_ELEMENT_DESC aInputElementDescs[] =
 	{
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
 	};
 
-	// Create a PSO description, then create the object
+	// Describe and create the graphics pipeline state object (PSO).
 	{
-		// Describe and create the graphics pipeline state object (PSO).
+		// Create a PSO for the Lambert pixel shader
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc =
 		{
 			.pRootSignature = m_pRootSignature.Get(),
-			.VS = CD3DX12_SHADER_BYTECODE(pVertexShader.Get()),
-			.PS = CD3DX12_SHADER_BYTECODE(pPixelShader.Get()),
+			.VS = CD3DX12_SHADER_BYTECODE(pTriangleVS.Get()),
+			.PS = CD3DX12_SHADER_BYTECODE(pLambertPS.Get()),
 			.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT),
 			.SampleMask = UINT_MAX,
 			.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT),
@@ -442,23 +457,47 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 			.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
 			.NumRenderTargets = 1,
 			.RTVFormats = { DXGI_FORMAT_R8G8B8A8_UNORM, },
-			.SampleDesc =
-			{
-				.Count = 1,
-			},
+			.DSVFormat = DXGI_FORMAT_D32_FLOAT,
+			.SampleDesc = { .Count = 1 },
 		};
-		hr = m_pDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(m_pPipelineState.ReleaseAndGetAddressOf()));
+		hr = m_pDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(m_pLambertPipelineState.ReleaseAndGetAddressOf()));
 		if (FAILED(hr))
 		{
 			return hr;
 		}
 #ifdef _DEBUG
-		m_pPipelineState->SetName(L"Renderer::m_pPipelineState");
+		m_pLambertPipelineState->SetName(L"Renderer::m_pLambertPipelineState");
+#endif
+	}{
+		// Create the PSO for the solid color pixel shader
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc =
+		{
+			.pRootSignature = m_pRootSignature.Get(),
+			.VS = CD3DX12_SHADER_BYTECODE(pTriangleVS.Get()),
+			.PS = CD3DX12_SHADER_BYTECODE(pSolidColorPS.Get()),
+			.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT),
+			.SampleMask = UINT_MAX,
+			.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT),
+			.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT),
+			.InputLayout = { aInputElementDescs, ARRAYSIZE(aInputElementDescs) },
+			.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
+			.NumRenderTargets = 1,
+			.RTVFormats = { DXGI_FORMAT_R8G8B8A8_UNORM, },
+			.DSVFormat = DXGI_FORMAT_D32_FLOAT,
+			.SampleDesc = { .Count = 1 },
+		};
+		hr = m_pDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(m_pSolidPipelineState.ReleaseAndGetAddressOf()));
+		if (FAILED(hr))
+		{
+			return hr;
+		}
+#ifdef _DEBUG
+		m_pSolidPipelineState->SetName(L"Renderer::m_pSolidPipelineState");
 #endif
 	}
 
 	// Create the command list
-	hr = m_pDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_apCommandAllocators[m_uFrameIndex].Get(), m_pPipelineState.Get(), IID_PPV_ARGS(m_pCommandList.ReleaseAndGetAddressOf()));
+	hr = m_pDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_apCommandAllocators[m_uFrameIndex].Get(), nullptr, IID_PPV_ARGS(m_pCommandList.ReleaseAndGetAddressOf()));
 	if (FAILED(hr))
 	{
 		return hr;
@@ -473,22 +512,35 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 	{
 		Vertex cubeVertices[] =
 		{
-			{ .position = XMFLOAT3(-1.0f, 1.0f, -1.0f), 
-			  .color = XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) },
-			{ .position = XMFLOAT3(1.0f, 1.0f, -1.0f), 
-			  .color = XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f) },
-			{ .position = XMFLOAT3(1.0f, 1.0f, 1.0f), 
-			  .color = XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f) },
-			{ .position = XMFLOAT3(-1.0f, 1.0f, 1.0f), 
-			  .color = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) },
-			{ .position = XMFLOAT3(-1.0f, -1.0f, -1.0f), 
-			  .color = XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f) },
-			{ .position = XMFLOAT3(1.0f, -1.0f, -1.0f), 
-			  .color = XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f) },
-			{ .position = XMFLOAT3(1.0f, -1.0f, 1.0f), 
-			  .color = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f) },
-			{ .position = XMFLOAT3(-1.0f, -1.0f, 1.0f), 
-			  .color = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f) },
+			{ XMFLOAT3(-1.0f, 1.0f, -1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
+			{ XMFLOAT3(1.0f, 1.0f, -1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
+			{ XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
+			{ XMFLOAT3(-1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
+
+			{ XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
+			{ XMFLOAT3(1.0f, -1.0f, -1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
+			{ XMFLOAT3(1.0f, -1.0f, 1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
+			{ XMFLOAT3(-1.0f, -1.0f, 1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
+
+			{ XMFLOAT3(-1.0f, -1.0f, 1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
+			{ XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
+			{ XMFLOAT3(-1.0f, 1.0f, -1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
+			{ XMFLOAT3(-1.0f, 1.0f, 1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
+
+			{ XMFLOAT3(1.0f, -1.0f, 1.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
+			{ XMFLOAT3(1.0f, -1.0f, -1.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
+			{ XMFLOAT3(1.0f, 1.0f, -1.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
+			{ XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
+
+			{ XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
+			{ XMFLOAT3(1.0f, -1.0f, -1.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
+			{ XMFLOAT3(1.0f, 1.0f, -1.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
+			{ XMFLOAT3(-1.0f, 1.0f, -1.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
+
+			{ XMFLOAT3(-1.0f, -1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
+			{ XMFLOAT3(1.0f, -1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
+			{ XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
+			{ XMFLOAT3(-1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
 		};
 		const UINT vertexBufferSize = sizeof(cubeVertices);
 
@@ -531,13 +583,13 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 	// Create the index buffer
 	{
 		static WORD cubeIndices[] =
-		{
-			3, 1, 0, 2, 1, 3,	// TOP
-			0, 5, 4, 1, 5, 0,	// FRONT
-			3, 4, 7, 0, 4, 3,	// RIGHT
-			1, 6, 5, 2, 6, 1,	// LEFT
-			2, 7, 6, 3, 7, 2,	// BACK
-			6, 4, 5, 7, 4, 6,	// BOTTOM
+		{	
+			 3,  1,  0,  2,  1,  3,		// TOP
+			 6,  4,  5,  7,  4,  6,		// BOTTOM
+			11,  9,  8, 10,  9, 11,		// LEFT
+			14, 12, 13, 15, 12, 14,		// RIGHT
+			19, 17, 16, 18, 17, 19,		// FRONT
+			22, 20, 21, 23, 20, 22,		// BACK
 		};
 		const UINT indexBufferSize = sizeof(cubeIndices);
 
@@ -617,6 +669,15 @@ void Renderer::Update()
 
 	// Rotate the cube around the Y-axis
 	m_worldMatrix = XMMatrixRotationY(m_fCurRotationAngleRad);
+
+	// Initialize the direction of the rotating light
+	m_avLightDirs[1] = XMFLOAT4(0.0f, 0.0f, -1.0f, 0.0f);
+
+	// Rotate the second light around the origin
+	XMMATRIX mRotate = XMMatrixRotationY(-2.0f * m_fCurRotationAngleRad);
+	XMVECTOR vLightDir = XMLoadFloat4(&m_avLightDirs[1]);
+	vLightDir = XMVector3Transform(vLightDir, mRotate);
+	XMStoreFloat4(&m_avLightDirs[1], vLightDir);
 }
 
 void Renderer::Render()
@@ -626,7 +687,7 @@ void Renderer::Render()
 	m_apCommandAllocators[m_uFrameIndex]->Reset();
 
 	// Command list can be reset at any time and must be before re-recording
-	m_pCommandList->Reset(m_apCommandAllocators[m_uFrameIndex].Get(), m_pPipelineState.Get());
+	m_pCommandList->Reset(m_apCommandAllocators[m_uFrameIndex].Get(), m_pLambertPipelineState.Get());
 
 	// Set the graphics RS to be used by this frame
 	m_pCommandList->SetGraphicsRootSignature(m_pRootSignature.Get());
@@ -638,9 +699,15 @@ void Renderer::Render()
 	ConstantBuffer cb = {};
 
 	// Shaders compiled with default transformation matrices
-	cb.world = XMMatrixTranspose(m_worldMatrix);
-	cb.view = XMMatrixTranspose(m_viewMatrix);
-	cb.projection = XMMatrixTranspose(m_projectionMatrix);
+	cb.World = XMMatrixTranspose(m_worldMatrix);
+	cb.View = XMMatrixTranspose(m_viewMatrix);
+	cb.Projection = XMMatrixTranspose(m_projectionMatrix);
+
+	cb.LightDirs[0] = m_avLightDirs[0];
+	cb.LightDirs[1] = m_avLightDirs[1];
+	cb.LightColors[0] = m_avLightColors[0];
+	cb.LightColors[1] = m_avLightColors[1];
+	cb.OutputColor = m_vOutputColor;
 
 	// Set the constants for the first draw call
 	memcpy(&m_mappedConstantData[constantBufferIndex], &cb, sizeof(ConstantBuffer));
@@ -657,12 +724,13 @@ void Renderer::Render()
 	);
 	m_pCommandList->ResourceBarrier(1, &preCopyBarriers1);
 
+	// Set render target and depth buffer in OM stage
 	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_pRtvHeap->GetCPUDescriptorHandleForHeapStart(), m_uFrameIndex, m_uRtvDescriptorSize);
 	CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(m_pDsvHeap->GetCPUDescriptorHandleForHeapStart());
 	m_pCommandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
 
 	// Clear render target & depth buffer
-	const float clearColor[] = { 0.6f, 0.7f, 0.8f, 1.0f };
+	const float clearColor[] = { 0.13f, 0.13f, 0.13f, 1.0f };
 	m_pCommandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 	m_pCommandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
@@ -676,23 +744,30 @@ void Renderer::Render()
 	baseGpuAddress += sizeof(ConstantBuffer);
 	++constantBufferIndex;
 
-	// Update the World matrix of the second cube
-	XMMATRIX mSpin = XMMatrixRotationX(m_fCurRotationAngleRad);
-	XMMATRIX mScale = XMMatrixScaling(0.2f, 0.2f, 0.2f);
-	XMMATRIX mOrbit = XMMatrixRotationY(-2.0f * m_fCurRotationAngleRad);
-	XMMATRIX mTranslate = XMMatrixTranslation(0.0f, 0.0f, -5.0f);
+	// Render each light
+	m_pCommandList->SetPipelineState(m_pSolidPipelineState.Get());
 
-	// Update the world variable to reflect the current light
-	cb.world = XMMatrixTranspose(mScale * mSpin * mTranslate * mOrbit);
+	for (int m = 0; m < 2; ++m)
+	{
+		XMMATRIX mLight = XMMatrixTranslationFromVector(5.0f * XMLoadFloat4(&cb.LightDirs[m]));
+		XMMATRIX mLightScale = XMMatrixScaling(0.2f, 0.2f, 0.2f);
+		mLight = mLightScale * mLight;
 
-	// Set the constants for the draw call
-	memcpy(&m_mappedConstantData[constantBufferIndex], &cb, sizeof(ConstantBuffer));
+		// Update the world variable to reflect the current light
+		cb.World = XMMatrixTranspose(mLight);
+		cb.OutputColor = cb.LightColors[m];
 
-	// Bind the constants to the shader
-	m_pCommandList->SetGraphicsRootConstantBufferView(0, baseGpuAddress);
+		// Set the constants for the draw call
+		memcpy(&m_mappedConstantData[constantBufferIndex], &cb, sizeof(ConstantBuffer));
 
-	// Draw the second cube
-	m_pCommandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
+		// Bind the constants to the shader
+		m_pCommandList->SetGraphicsRootConstantBufferView(0, baseGpuAddress);
+
+		// Draw the second cube
+		m_pCommandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
+		baseGpuAddress += sizeof(ConstantBuffer);
+		++constantBufferIndex;
+	}
 
 	// Indicate that the back buffer will now be used to present
 	D3D12_RESOURCE_BARRIER preCopyBarriers2 = CD3DX12_RESOURCE_BARRIER::Transition(

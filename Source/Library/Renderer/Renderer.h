@@ -19,7 +19,7 @@ public:
 
 private:
 	static const UINT NUM_FRAME_BUFFERS = 2;
-	static const UINT NUM_DRAW_CALLS = 2;
+	static const UINT NUM_DRAW_CALLS = 3;
 
 	// Pipeline objects
 	CD3DX12_VIEWPORT m_viewport;
@@ -33,7 +33,8 @@ private:
 	ComPtr<ID3D12Resource> m_apRenderTargets[NUM_FRAME_BUFFERS];
 	ComPtr<ID3D12CommandAllocator> m_apCommandAllocators[NUM_FRAME_BUFFERS];
 	ComPtr<ID3D12RootSignature> m_pRootSignature;
-	ComPtr<ID3D12PipelineState> m_pPipelineState;
+	ComPtr<ID3D12PipelineState> m_pLambertPipelineState;
+	ComPtr<ID3D12PipelineState> m_pSolidPipelineState;
 	ComPtr<ID3D12GraphicsCommandList> m_pCommandList;
 
 	// App resources
@@ -55,7 +56,11 @@ private:
 	// Scene constants
 	float m_fCurRotationAngleRad;
 
+	// Computed values 'll be loaded into CB
 	XMMATRIX m_worldMatrix;
     XMMATRIX m_viewMatrix;
     XMMATRIX m_projectionMatrix;
+	XMFLOAT4 m_avLightDirs[2];
+	XMFLOAT4 m_avLightColors[2];
+	XMFLOAT4 m_vOutputColor;
 };
