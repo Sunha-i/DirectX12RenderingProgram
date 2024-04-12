@@ -17,7 +17,6 @@ Renderer::Renderer()
 	, m_pIndexBuffer()
 	, m_vertexBufferView()
 	, m_indexBufferView()
-	, m_fCurRotationAngleRad(0.0f)
 	, m_worldMatrix()
 	, m_viewMatrix()
 	, m_projectionMatrix()
@@ -56,12 +55,6 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 
 	// Initialize the projection matrix
 	m_projectionMatrix = XMMatrixPerspectiveFovLH(XM_PIDIV4, uWidth / (FLOAT)uHeight, 0.01f, 100.0f);
-
-	// Initialize the lighting parameters
-	m_avLightDirs[0] = XMFLOAT4(-0.577f, 0.577f, -0.577f, 0.0f);
-	m_avLightDirs[1] = XMFLOAT4(0.0f, 0.0f, -1.0f, 0.0f);
-	m_avLightColors[0] = XMFLOAT4(0.9f, 0.9f, 0.9f, 1.0f);
-	m_avLightColors[1] = XMFLOAT4(0.8f, 0.0f, 0.0f, 1.0f);
 
 	// Initialize the scene output color
 	m_vOutputColor = XMFLOAT4(0, 0, 0, 0);
@@ -656,28 +649,29 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 	return S_OK;
 }
 
-void Renderer::Update()
+HRESULT Renderer::AddPointLight(_In_ size_t index, _In_ const std::shared_ptr<PointLight>& pPointLight)
 {
-	const float rotationSpeed = 0.015f;
-
-	// Update the rotation constant
-	m_fCurRotationAngleRad += rotationSpeed;
-	if (m_fCurRotationAngleRad >= XM_2PI)
+	if (index >= NUM_LIGHTS)
 	{
-		m_fCurRotationAngleRad -= XM_2PI;
+		return E_FAIL;
 	}
+	m_apPointLights[index] = pPointLight;
+
+	return S_OK;
+}
+
+void Renderer::Update(_In_ FLOAT deltaTime)
+{
+	static FLOAT t = 0.0f;
+	t += deltaTime;
 
 	// Rotate the cube around the Y-axis
-	m_worldMatrix = XMMatrixRotationY(m_fCurRotationAngleRad);
+	m_worldMatrix = XMMatrixRotationY(t);
 
-	// Initialize the direction of the rotating light
-	m_avLightDirs[1] = XMFLOAT4(0.0f, 0.0f, -1.0f, 0.0f);
-
-	// Rotate the second light around the origin
-	XMMATRIX mRotate = XMMatrixRotationY(-2.0f * m_fCurRotationAngleRad);
-	XMVECTOR vLightDir = XMLoadFloat4(&m_avLightDirs[1]);
-	vLightDir = XMVector3Transform(vLightDir, mRotate);
-	XMStoreFloat4(&m_avLightDirs[1], vLightDir);
+	for (UINT i = 0; i < NUM_LIGHTS; ++i)
+	{
+		m_apPointLights[i]->Update(deltaTime);
+	}
 }
 
 void Renderer::Render()
@@ -703,10 +697,11 @@ void Renderer::Render()
 	cb.View = XMMatrixTranspose(m_viewMatrix);
 	cb.Projection = XMMatrixTranspose(m_projectionMatrix);
 
-	cb.LightDirs[0] = m_avLightDirs[0];
-	cb.LightDirs[1] = m_avLightDirs[1];
-	cb.LightColors[0] = m_avLightColors[0];
-	cb.LightColors[1] = m_avLightColors[1];
+	for (size_t i = 0; i < NUM_LIGHTS; ++i)
+	{
+		cb.LightDirs[i] = m_apPointLights[i]->GetPosition();
+		cb.LightColors[i] = m_apPointLights[i]->GetColor();
+	}
 	cb.OutputColor = m_vOutputColor;
 
 	// Set the constants for the first draw call

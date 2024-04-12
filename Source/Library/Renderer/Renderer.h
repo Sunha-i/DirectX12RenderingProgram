@@ -3,6 +3,7 @@
 #include "Common.h"
 
 #include "Renderer/DataTypes.h"
+#include "Light/PointLight.h"
 
 class Renderer
 {
@@ -11,8 +12,9 @@ public:
 	~Renderer() = default;
 
 	HRESULT InitDevice(_In_ HWND hWnd);
+	HRESULT AddPointLight(_In_ size_t index, _In_ const std::shared_ptr<PointLight>& pPointLight);
 
-	void Update();
+	void Update(_In_ FLOAT deltaTime);
 	void Render();
 	void WaitForGpu();
 	void MoveToNextFrame();
@@ -53,14 +55,11 @@ private:
 	ComPtr<ID3D12Fence> m_pFence;
 	UINT64 m_auFenceValues[NUM_FRAME_BUFFERS];
 
-	// Scene constants
-	float m_fCurRotationAngleRad;
-
 	// Computed values 'll be loaded into CB
 	XMMATRIX m_worldMatrix;
     XMMATRIX m_viewMatrix;
     XMMATRIX m_projectionMatrix;
-	XMFLOAT4 m_avLightDirs[2];
-	XMFLOAT4 m_avLightColors[2];
 	XMFLOAT4 m_vOutputColor;
+
+	std::shared_ptr<PointLight> m_apPointLights[NUM_LIGHTS];
 };

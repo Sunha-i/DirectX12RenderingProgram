@@ -1,10 +1,23 @@
 ﻿#include "Common.h"
 
 #include "Game/Game.h"
+#include "Light/RotatingPointLight.h"
 
 INT WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ INT nCmdShow)
 {
     std::unique_ptr<Game> game = std::make_unique<Game>(L"Dx12 Renderer");
+
+    // Point Light
+    XMFLOAT4 color(0.9f, 0.9f, 0.9f, 1.0f);
+    std::shared_ptr<PointLight> pointLight = std::make_shared<PointLight>(XMFLOAT4(-0.577f, 0.577f, -0.577f, 0.0f), color);
+    if (FAILED(game->GetRenderer()->AddPointLight(0u, pointLight)))
+        return 0;
+
+    // Rotating Point Light
+    XMFLOAT4 Rcolor(0.8f, 0.0f, 0.0f, 1.0f);
+    std::shared_ptr<RotatingPointLight> RpointLight = std::make_shared<RotatingPointLight>(XMFLOAT4(0.0f, 0.0f, -1.0f, 1.0f), Rcolor);
+    if (FAILED(game->GetRenderer()->AddPointLight(1u, RpointLight)))
+        return 0;
 
     if (FAILED(game->Initialize(hInstance, nCmdShow)))
     {

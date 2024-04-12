@@ -1,5 +1,7 @@
 #pragma once
 
+#define NUM_LIGHTS 2
+
 #include "Common.h"
 
 struct Vertex

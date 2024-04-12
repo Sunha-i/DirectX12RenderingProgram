@@ -50,7 +50,7 @@ INT Game::Run()
 
             FLOAT deltaTime = static_cast<FLOAT>(elapsedMsc.QuadPart) / 1000000.0f;
 
-            m_renderer->Update();
+            m_renderer->Update(deltaTime);
             m_renderer->Render();
         }
     }
