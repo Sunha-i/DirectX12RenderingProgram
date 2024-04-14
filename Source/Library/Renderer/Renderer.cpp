@@ -649,6 +649,17 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 	return S_OK;
 }
 
+HRESULT Renderer::AddRenderable(_In_ PCWSTR pszRenderableName, _In_ const std::shared_ptr<Renderable>& renderable)
+{
+	if (m_umRenderables.contains(pszRenderableName))
+	{
+		return E_FAIL;
+	}
+	m_umRenderables[pszRenderableName] = renderable;
+
+	return S_OK;
+}
+
 HRESULT Renderer::AddPointLight(_In_ size_t index, _In_ const std::shared_ptr<PointLight>& pPointLight)
 {
 	if (index >= NUM_LIGHTS)
@@ -667,6 +678,11 @@ void Renderer::Update(_In_ FLOAT deltaTime)
 
 	// Rotate the cube around the Y-axis
 	m_worldMatrix = XMMatrixRotationY(t);
+
+	for (auto it = m_umRenderables.begin(); it != m_umRenderables.end(); ++it)
+	{
+		it->second->Update(deltaTime);
+	}
 
 	for (UINT i = 0; i < NUM_LIGHTS; ++i)
 	{
@@ -742,15 +758,11 @@ void Renderer::Render()
 	// Render each light
 	m_pCommandList->SetPipelineState(m_pSolidPipelineState.Get());
 
-	for (int m = 0; m < 2; ++m)
+	for (auto it = m_umRenderables.begin(); it != m_umRenderables.end(); ++it)
 	{
-		XMMATRIX mLight = XMMatrixTranslationFromVector(5.0f * XMLoadFloat4(&cb.LightDirs[m]));
-		XMMATRIX mLightScale = XMMatrixScaling(0.2f, 0.2f, 0.2f);
-		mLight = mLightScale * mLight;
-
 		// Update the world variable to reflect the current light
-		cb.World = XMMatrixTranspose(mLight);
-		cb.OutputColor = cb.LightColors[m];
+		cb.World = XMMatrixTranspose(it->second->GetWorldMatrix());
+		cb.OutputColor = it->second->GetOutputColor();
 
 		// Set the constants for the draw call
 		memcpy(&m_mappedConstantData[constantBufferIndex], &cb, sizeof(ConstantBuffer));
@@ -759,7 +771,7 @@ void Renderer::Render()
 		m_pCommandList->SetGraphicsRootConstantBufferView(0, baseGpuAddress);
 
 		// Draw the second cube
-		m_pCommandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
+		m_pCommandList->DrawIndexedInstanced(it->second->GetNumIndices(), 1, 0, 0, 0);
 		baseGpuAddress += sizeof(ConstantBuffer);
 		++constantBufferIndex;
 	}

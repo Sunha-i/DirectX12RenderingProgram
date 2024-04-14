@@ -2,7 +2,7 @@
 
 #include "Common.h"
 
-#include "Renderer/DataTypes.h"
+#include "Renderer/Renderable.h"
 #include "Light/PointLight.h"
 
 class Renderer
@@ -12,6 +12,7 @@ public:
 	~Renderer() = default;
 
 	HRESULT InitDevice(_In_ HWND hWnd);
+	HRESULT AddRenderable(_In_ PCWSTR pszRenderableName, _In_ const std::shared_ptr<Renderable>& renderable);
 	HRESULT AddPointLight(_In_ size_t index, _In_ const std::shared_ptr<PointLight>& pPointLight);
 
 	void Update(_In_ FLOAT deltaTime);
@@ -57,9 +58,10 @@ private:
 
 	// Computed values 'll be loaded into CB
 	XMMATRIX m_worldMatrix;
-    XMMATRIX m_viewMatrix;
-    XMMATRIX m_projectionMatrix;
+	XMMATRIX m_viewMatrix;
+	XMMATRIX m_projectionMatrix;
 	XMFLOAT4 m_vOutputColor;
 
+	std::unordered_map<PCWSTR, std::shared_ptr<Renderable>> m_umRenderables;
 	std::shared_ptr<PointLight> m_apPointLights[NUM_LIGHTS];
 };

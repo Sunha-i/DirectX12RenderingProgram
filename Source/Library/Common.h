@@ -5,7 +5,7 @@
  
 #ifndef UNICODE
 #define UNICODE
-#endif // !UNICODE
+#endif
 
 #include <windows.h>
 #include <d3dx12.h>
@@ -14,6 +14,7 @@
 
 #include <wrl.h>
 #include <dxgi1_6.h>
+#include <unordered_map>
 
 using namespace Microsoft::WRL;
 using namespace DirectX;
