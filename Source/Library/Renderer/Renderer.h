@@ -4,6 +4,8 @@
 
 #include "Renderer/Renderable.h"
 #include "Light/PointLight.h"
+#include "Texture/DDSTextureLoader.h"
+#include "Texture/ResourceUploadBatch.h"
 
 class Renderer
 {
@@ -32,6 +34,7 @@ private:
 	ComPtr<IDXGISwapChain3> m_pSwapChain;
 	ComPtr<ID3D12DescriptorHeap> m_pRtvHeap;
 	ComPtr<ID3D12DescriptorHeap> m_pDsvHeap;
+	ComPtr<ID3D12DescriptorHeap> m_pSrvHeap;
 	ComPtr<ID3D12Resource> m_pDepthStencil;
 	ComPtr<ID3D12Resource> m_apRenderTargets[NUM_FRAME_BUFFERS];
 	ComPtr<ID3D12CommandAllocator> m_apCommandAllocators[NUM_FRAME_BUFFERS];
@@ -43,6 +46,7 @@ private:
 	// App resources
 	ComPtr<ID3D12Resource> m_pVertexBuffer;
 	ComPtr<ID3D12Resource> m_pIndexBuffer;
+	ComPtr<ID3D12Resource> m_pTextureResource;
 	ComPtr<ID3D12Resource> m_pPerFrameConstants;
 	D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
 	D3D12_INDEX_BUFFER_VIEW m_indexBufferView;

@@ -6,6 +6,7 @@ Renderer::Renderer()
 	, m_pSwapChain()
 	, m_pRtvHeap()
 	, m_pDsvHeap()
+	, m_pSrvHeap()
 	, m_pRootSignature()
 	, m_pLambertPipelineState()
 	, m_pSolidPipelineState()
@@ -15,6 +16,7 @@ Renderer::Renderer()
 	, m_hFenceEvent()
 	, m_pVertexBuffer()
 	, m_pIndexBuffer()
+	, m_pTextureResource()
 	, m_vertexBufferView()
 	, m_indexBufferView()
 	, m_worldMatrix()
@@ -269,6 +271,19 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 			.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE,
 		};
 		hr = m_pDevice->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(m_pDsvHeap.ReleaseAndGetAddressOf()));
+		if (FAILED(hr))
+		{
+			return hr;
+		}
+
+		// Describe and create a shader resource view (SRV) heap for the texture
+		D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc =
+		{
+			.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
+			.NumDescriptors = 1,
+			.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
+		};
+		hr = m_pDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(m_pSrvHeap.ReleaseAndGetAddressOf()));
 		if (FAILED(hr))
 		{
 			return hr;
@@ -620,6 +635,34 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 			.SizeInBytes = indexBufferSize,
 			.Format = DXGI_FORMAT_R16_UINT,
 		};
+	}
+
+	// Loads a texture, upload resources to the GPU
+	{
+		// start recording upload commands
+		ResourceUploadBatch resourceUpload(m_pDevice.Get());
+		resourceUpload.Begin();
+
+		m_pTextureResource.Reset();
+		hr = CreateDDSTextureFromFile(m_pDevice.Get(), resourceUpload, L"../Library/seafloor.dds", m_pTextureResource.ReleaseAndGetAddressOf());
+		if (FAILED(hr))
+		{
+			return hr;
+		}
+
+		// upload and wait for the upload thread to terminate
+		auto uploadFin = resourceUpload.End(m_pCommandQueue.Get());
+		uploadFin.wait();
+
+		// describe and create a SRV for the texture
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc =
+		{
+			.Format = m_pTextureResource->GetDesc().Format,
+			.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
+			.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+			.Texture2D = { .MipLevels = 1 }
+		};
+		m_pDevice->CreateShaderResourceView(m_pTextureResource.Get(), &srvDesc, m_pSrvHeap->GetCPUDescriptorHandleForHeapStart());
 	}
 
 	// Create synchronization objects
