@@ -11,15 +11,20 @@ cbuffer ConstantBuffer : register(b0)
 struct VSInput
 {
     float4 position : POSITION;
+    float2 texCoord : TEXCOORD;
     float3 normal : NORMAL;
 };
 
 struct PSInput
 {
     float4 position : SV_POSITION;
+    float2 texCoord : TEXCOORD;
     float3 normal : NORMAL;
     float3 worldPosition : WORLDPOS;
 };
+
+Texture2D txDiffuse : register(t0);
+SamplerState samLinear : register(s0);
 
 PSInput VSTriangle(VSInput input)
 {
@@ -30,21 +35,14 @@ PSInput VSTriangle(VSInput input)
     output.position = mul(output.position, projection);
 
     output.normal = mul(input.normal, ((float3x3) world));
+    output.texCoord = input.texCoord;
 
     return output;
 }
 
 float4 PSLambert(PSInput input) : SV_TARGET
 {
-    float4 finalColor = 0;
-
-    for (int i = 0; i < 2; i++)
-    {
-        finalColor += saturate(dot((float3) lightDir[i], input.normal) * lightColor[i]);
-    }
-    finalColor.a = 1;
-
-    return finalColor;
+    return txDiffuse.Sample(samLinear, input.texCoord);
 }
 
 float4 PSSolid(PSInput input) : SV_TARGET

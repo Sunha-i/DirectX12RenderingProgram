@@ -7,6 +7,7 @@
 struct Vertex
 {
 	XMFLOAT3 Position;
+	XMFLOAT2 TexCoord;
 	XMFLOAT3 Normal;
 };
 
