@@ -4,6 +4,7 @@
 #include "Light/RotatingPointLight.h"
 #include "Cube/Cube.h"
 #include "Cube/RotatingCube.h"
+#include "Model/Model.h"
 
 INT WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ INT nCmdShow)
 {
@@ -33,6 +34,10 @@ INT WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
     RlightCube->Translate(5.0f * XMVectorSet(0.0f, 0.0f, -1.0f, 0.0f));
     if (FAILED(game->GetRenderer()->AddRenderable(L"RotatingLightCube", RlightCube)))
         return 0;
+
+    // Stone Model
+    std::shared_ptr<Model> stoneGolem = std::make_shared<Model>(L"../../Data/Stone/Stone.obj");
+    stoneGolem->Initialize();
 
     if (FAILED(game->Initialize(hInstance, nCmdShow)))
     {

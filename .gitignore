@@ -396,5 +396,6 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 
-# DirectXTK library
+# Third-party library
 !External/DirectXTK/**
+!External/Assimp/**
