@@ -22,6 +22,7 @@
     <ClInclude Include="Common.h" />
     <ClInclude Include="Game\Game.h" />
     <ClInclude Include="Light\PointLight.h" />
+    <ClInclude Include="Material\Material.h" />
     <ClInclude Include="Model\Model.h" />
     <ClInclude Include="Renderer\DataTypes.h" />
     <ClInclude Include="Renderer\Renderable.h" />
@@ -29,6 +30,7 @@
     <ClInclude Include="Texture\DDSTextureLoader.h" />
     <ClInclude Include="Texture\GraphicsMemory.h" />
     <ClInclude Include="Texture\ResourceUploadBatch.h" />
+    <ClInclude Include="Texture\Texture.h" />
     <ClInclude Include="Texture\WICTextureLoader.h" />
     <ClInclude Include="Window\BaseWindow.h" />
     <ClInclude Include="Window\MainWindow.h" />
@@ -36,9 +38,11 @@
   <ItemGroup>
     <ClCompile Include="Game\Game.cpp" />
     <ClCompile Include="Light\PointLight.cpp" />
+    <ClCompile Include="Material\Material.cpp" />
     <ClCompile Include="Model\Model.cpp" />
     <ClCompile Include="Renderer\Renderable.cpp" />
     <ClCompile Include="Renderer\Renderer.cpp" />
+    <ClCompile Include="Texture\Texture.cpp" />
     <ClCompile Include="Window\MainWindow.cpp" />
   </ItemGroup>
   <ItemGroup>

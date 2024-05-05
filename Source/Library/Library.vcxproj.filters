@@ -46,6 +46,15 @@
     <Filter Include="Source Files\Model">
       <UniqueIdentifier>{ebcd8592-27c9-4bda-b599-7c0625c43b58}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\Material">
+      <UniqueIdentifier>{cdb899a8-7224-423c-8d33-1f674aa9a0c0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Material">
+      <UniqueIdentifier>{c51a257d-b152-4a85-86d6-8527d897d294}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Texture">
+      <UniqueIdentifier>{98d27f61-b568-4a80-b971-9a2acc3b641f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Common.h">
@@ -87,6 +96,12 @@
     <ClInclude Include="Model\Model.h">
       <Filter>Header Files\Model</Filter>
     </ClInclude>
+    <ClInclude Include="Material\Material.h">
+      <Filter>Header Files\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="Texture\Texture.h">
+      <Filter>Header Files\Texture</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Game\Game.cpp">
@@ -106,6 +121,12 @@
     </ClCompile>
     <ClCompile Include="Model\Model.cpp">
       <Filter>Source Files\Model</Filter>
+    </ClCompile>
+    <ClCompile Include="Material\Material.cpp">
+      <Filter>Source Files\Material</Filter>
+    </ClCompile>
+    <ClCompile Include="Texture\Texture.cpp">
+      <Filter>Source Files\Texture</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
