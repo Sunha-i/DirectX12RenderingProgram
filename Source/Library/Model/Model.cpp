@@ -10,8 +10,11 @@ Model::Model(_In_ const std::filesystem::path& filePath)
 {
 }
 
-HRESULT Model::Initialize()
-{
+HRESULT Model::Initialize(
+	_In_ ComPtr<ID3D12Device>& pDevice,
+	_In_ ComPtr<ID3D12CommandQueue>& pCommandQueue,
+	_In_ ComPtr<ID3D12DescriptorHeap>& pSrvHeap
+){
 	HRESULT hr = S_OK;
 
 	Assimp::Importer importer;

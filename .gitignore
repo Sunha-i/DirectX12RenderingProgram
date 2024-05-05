@@ -399,3 +399,6 @@ FodyWeavers.xsd
 # Third-party library
 !External/DirectXTK/**
 !External/Assimp/**
+
+# StoneGolem Model
+!Data/Stone/**

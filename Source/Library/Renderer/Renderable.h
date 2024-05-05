@@ -13,7 +13,15 @@ public:
 	Renderable() = default;
 	virtual ~Renderable() = default;
 
+	virtual HRESULT Initialize(
+		_In_ ComPtr<ID3D12Device>& pDevice,
+		_In_ ComPtr<ID3D12CommandQueue>& pCommandQueue,
+		_In_ ComPtr<ID3D12DescriptorHeap>& pSrvHeap
+	) = 0;
 	virtual void Update(_In_ FLOAT deltaTime) = 0;
+
+	D3D12_VERTEX_BUFFER_VIEW* GetVertexBufferView();
+	D3D12_INDEX_BUFFER_VIEW* GetIndexBufferView();
 
 	const XMMATRIX& GetWorldMatrix() const;
 	const XMFLOAT4& GetOutputColor() const;
@@ -29,8 +37,17 @@ public:
 	virtual UINT GetNumIndices() const = 0;
 
 protected:
-	const virtual Vertex* getVertices() const = 0;
+	virtual const Vertex* getVertices() const = 0;
 	virtual const WORD* getIndices() const = 0;
+
+	HRESULT initialize(_In_ ComPtr<ID3D12Device>& pDevice);
+	HRESULT createVertexBuffer(_In_ ComPtr<ID3D12Device>& pDevice);
+	HRESULT createIndexBuffer(_In_ ComPtr<ID3D12Device>& pDevice);
+
+	ComPtr<ID3D12Resource> m_pVertexBuffer;
+	ComPtr<ID3D12Resource> m_pIndexBuffer;
+	D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
+	D3D12_INDEX_BUFFER_VIEW m_indexBufferView;
 
 	XMFLOAT4 m_vOutputColor;
 	XMMATRIX m_mWorld;

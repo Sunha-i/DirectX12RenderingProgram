@@ -11,6 +11,11 @@ public:
     BaseCube(_In_ const XMFLOAT4& outputColor);
     ~BaseCube() = default;
 
+    virtual HRESULT Initialize(
+        _In_ ComPtr<ID3D12Device>& pDevice,
+        _In_ ComPtr<ID3D12CommandQueue>& pCommandQueue,
+        _In_ ComPtr<ID3D12DescriptorHeap>& pSrvHeap
+    ) override;
     virtual void Update(_In_ FLOAT deltaTime) = 0;
 
     UINT GetNumVertices() const override;
@@ -22,35 +27,35 @@ protected:
 
     static constexpr const Vertex VERTICES[] =
     {
-        {.Position = XMFLOAT3(-1.0f, 1.0f, -1.0f), .Normal = XMFLOAT3(0.0f, 1.0f, 0.0f) },
-        {.Position = XMFLOAT3( 1.0f, 1.0f, -1.0f), .Normal = XMFLOAT3(0.0f, 1.0f, 0.0f) },
-        {.Position = XMFLOAT3( 1.0f, 1.0f,  1.0f), .Normal = XMFLOAT3(0.0f, 1.0f, 0.0f) },
-        {.Position = XMFLOAT3(-1.0f, 1.0f,  1.0f), .Normal = XMFLOAT3(0.0f, 1.0f, 0.0f) },
+        {.Position = XMFLOAT3(-1.0f, 1.0f, -1.0f), .TexCoord = XMFLOAT2(1.0f, 0.0f), .Normal = XMFLOAT3(0.0f, 1.0f, 0.0f) },
+        {.Position = XMFLOAT3( 1.0f, 1.0f, -1.0f), .TexCoord = XMFLOAT2(0.0f, 0.0f), .Normal = XMFLOAT3(0.0f, 1.0f, 0.0f) },
+        {.Position = XMFLOAT3( 1.0f, 1.0f,  1.0f), .TexCoord = XMFLOAT2(0.0f, 1.0f), .Normal = XMFLOAT3(0.0f, 1.0f, 0.0f) },
+        {.Position = XMFLOAT3(-1.0f, 1.0f,  1.0f), .TexCoord = XMFLOAT2(1.0f, 1.0f), .Normal = XMFLOAT3(0.0f, 1.0f, 0.0f) },
 
-        {.Position = XMFLOAT3(-1.0f, -1.0f, -1.0f), .Normal = XMFLOAT3(0.0f, -1.0f, 0.0f) },
-        {.Position = XMFLOAT3( 1.0f, -1.0f, -1.0f), .Normal = XMFLOAT3(0.0f, -1.0f, 0.0f) },
-        {.Position = XMFLOAT3( 1.0f, -1.0f,  1.0f), .Normal = XMFLOAT3(0.0f, -1.0f, 0.0f) },
-        {.Position = XMFLOAT3(-1.0f, -1.0f,  1.0f), .Normal = XMFLOAT3(0.0f, -1.0f, 0.0f) },
+        {.Position = XMFLOAT3(-1.0f, -1.0f, -1.0f), .TexCoord = XMFLOAT2(0.0f, 0.0f), .Normal = XMFLOAT3(0.0f, -1.0f, 0.0f) },
+        {.Position = XMFLOAT3( 1.0f, -1.0f, -1.0f), .TexCoord = XMFLOAT2(1.0f, 0.0f), .Normal = XMFLOAT3(0.0f, -1.0f, 0.0f) },
+        {.Position = XMFLOAT3( 1.0f, -1.0f,  1.0f), .TexCoord = XMFLOAT2(1.0f, 1.0f), .Normal = XMFLOAT3(0.0f, -1.0f, 0.0f) },
+        {.Position = XMFLOAT3(-1.0f, -1.0f,  1.0f), .TexCoord = XMFLOAT2(0.0f, 1.0f), .Normal = XMFLOAT3(0.0f, -1.0f, 0.0f) },
 
-        {.Position = XMFLOAT3(-1.0f, -1.0f,  1.0f), .Normal = XMFLOAT3(-1.0f, 0.0f, 0.0f) },
-        {.Position = XMFLOAT3(-1.0f, -1.0f, -1.0f), .Normal = XMFLOAT3(-1.0f, 0.0f, 0.0f) },
-        {.Position = XMFLOAT3(-1.0f,  1.0f, -1.0f), .Normal = XMFLOAT3(-1.0f, 0.0f, 0.0f) },
-        {.Position = XMFLOAT3(-1.0f,  1.0f,  1.0f), .Normal = XMFLOAT3(-1.0f, 0.0f, 0.0f) },
+        {.Position = XMFLOAT3(-1.0f, -1.0f,  1.0f), .TexCoord = XMFLOAT2(0.0f, 1.0f), .Normal = XMFLOAT3(-1.0f, 0.0f, 0.0f) },
+        {.Position = XMFLOAT3(-1.0f, -1.0f, -1.0f), .TexCoord = XMFLOAT2(1.0f, 1.0f), .Normal = XMFLOAT3(-1.0f, 0.0f, 0.0f) },
+        {.Position = XMFLOAT3(-1.0f,  1.0f, -1.0f), .TexCoord = XMFLOAT2(1.0f, 0.0f), .Normal = XMFLOAT3(-1.0f, 0.0f, 0.0f) },
+        {.Position = XMFLOAT3(-1.0f,  1.0f,  1.0f), .TexCoord = XMFLOAT2(0.0f, 0.0f), .Normal = XMFLOAT3(-1.0f, 0.0f, 0.0f) },
 
-        {.Position = XMFLOAT3(1.0f, -1.0f,  1.0f), .Normal = XMFLOAT3(1.0f, 0.0f, 0.0f) },
-        {.Position = XMFLOAT3(1.0f, -1.0f, -1.0f), .Normal = XMFLOAT3(1.0f, 0.0f, 0.0f) },
-        {.Position = XMFLOAT3(1.0f,  1.0f, -1.0f), .Normal = XMFLOAT3(1.0f, 0.0f, 0.0f) },
-        {.Position = XMFLOAT3(1.0f,  1.0f,  1.0f), .Normal = XMFLOAT3(1.0f, 0.0f, 0.0f) },
+        {.Position = XMFLOAT3(1.0f, -1.0f,  1.0f), .TexCoord = XMFLOAT2(1.0f, 1.0f), .Normal = XMFLOAT3(1.0f, 0.0f, 0.0f) },
+        {.Position = XMFLOAT3(1.0f, -1.0f, -1.0f), .TexCoord = XMFLOAT2(0.0f, 1.0f), .Normal = XMFLOAT3(1.0f, 0.0f, 0.0f) },
+        {.Position = XMFLOAT3(1.0f,  1.0f, -1.0f), .TexCoord = XMFLOAT2(0.0f, 0.0f), .Normal = XMFLOAT3(1.0f, 0.0f, 0.0f) },
+        {.Position = XMFLOAT3(1.0f,  1.0f,  1.0f), .TexCoord = XMFLOAT2(1.0f, 0.0f), .Normal = XMFLOAT3(1.0f, 0.0f, 0.0f) },
 
-        {.Position = XMFLOAT3(-1.0f, -1.0f, -1.0f), .Normal = XMFLOAT3(0.0f, 0.0f, -1.0f) },
-        {.Position = XMFLOAT3( 1.0f, -1.0f, -1.0f), .Normal = XMFLOAT3(0.0f, 0.0f, -1.0f) },
-        {.Position = XMFLOAT3( 1.0f,  1.0f, -1.0f), .Normal = XMFLOAT3(0.0f, 0.0f, -1.0f) },
-        {.Position = XMFLOAT3(-1.0f,  1.0f, -1.0f), .Normal = XMFLOAT3(0.0f, 0.0f, -1.0f) },
+        {.Position = XMFLOAT3(-1.0f, -1.0f, -1.0f), .TexCoord = XMFLOAT2(0.0f, 1.0f), .Normal = XMFLOAT3(0.0f, 0.0f, -1.0f) },
+        {.Position = XMFLOAT3( 1.0f, -1.0f, -1.0f), .TexCoord = XMFLOAT2(1.0f, 1.0f), .Normal = XMFLOAT3(0.0f, 0.0f, -1.0f) },
+        {.Position = XMFLOAT3( 1.0f,  1.0f, -1.0f), .TexCoord = XMFLOAT2(1.0f, 0.0f), .Normal = XMFLOAT3(0.0f, 0.0f, -1.0f) },
+        {.Position = XMFLOAT3(-1.0f,  1.0f, -1.0f), .TexCoord = XMFLOAT2(0.0f, 0.0f), .Normal = XMFLOAT3(0.0f, 0.0f, -1.0f) },
 
-        {.Position = XMFLOAT3(-1.0f, -1.0f, 1.0f), .Normal = XMFLOAT3(0.0f, 0.0f, 1.0f) },
-        {.Position = XMFLOAT3( 1.0f, -1.0f, 1.0f), .Normal = XMFLOAT3(0.0f, 0.0f, 1.0f) },
-        {.Position = XMFLOAT3( 1.0f,  1.0f, 1.0f), .Normal = XMFLOAT3(0.0f, 0.0f, 1.0f) },
-        {.Position = XMFLOAT3(-1.0f,  1.0f, 1.0f), .Normal = XMFLOAT3(0.0f, 0.0f, 1.0f) },
+        {.Position = XMFLOAT3(-1.0f, -1.0f, 1.0f), .TexCoord = XMFLOAT2(1.0f, 1.0f), .Normal = XMFLOAT3(0.0f, 0.0f, 1.0f) },
+        {.Position = XMFLOAT3( 1.0f, -1.0f, 1.0f), .TexCoord = XMFLOAT2(0.0f, 1.0f), .Normal = XMFLOAT3(0.0f, 0.0f, 1.0f) },
+        {.Position = XMFLOAT3( 1.0f,  1.0f, 1.0f), .TexCoord = XMFLOAT2(0.0f, 0.0f), .Normal = XMFLOAT3(0.0f, 0.0f, 1.0f) },
+        {.Position = XMFLOAT3(-1.0f,  1.0f, 1.0f), .TexCoord = XMFLOAT2(1.0f, 0.0f), .Normal = XMFLOAT3(0.0f, 0.0f, 1.0f) },
     };
     static constexpr const UINT NUM_VERTICES = 24u;
     static constexpr const WORD INDICES[] =

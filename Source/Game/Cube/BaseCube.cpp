@@ -5,6 +5,14 @@ BaseCube::BaseCube(_In_ const XMFLOAT4& outputColor)
 {
 }
 
+HRESULT BaseCube::Initialize(
+	_In_ ComPtr<ID3D12Device>& pDevice,
+	_In_ ComPtr<ID3D12CommandQueue>& pCommandQueue,
+	_In_ ComPtr<ID3D12DescriptorHeap>& pSrvHeap
+){
+	return initialize(pDevice);
+}
+
 UINT BaseCube::GetNumVertices() const
 {
 	return NUM_VERTICES;

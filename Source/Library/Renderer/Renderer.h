@@ -44,12 +44,8 @@ private:
 	ComPtr<ID3D12GraphicsCommandList> m_pCommandList;
 
 	// App resources
-	ComPtr<ID3D12Resource> m_pVertexBuffer;
-	ComPtr<ID3D12Resource> m_pIndexBuffer;
 	ComPtr<ID3D12Resource> m_pTextureResource;
 	ComPtr<ID3D12Resource> m_pPerFrameConstants;
-	D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
-	D3D12_INDEX_BUFFER_VIEW m_indexBufferView;
 	D3D12_GPU_VIRTUAL_ADDRESS m_constantDataGpuAddr;
 	ConstantBuffer* m_mappedConstantData;
 	UINT m_uRtvDescriptorSize;

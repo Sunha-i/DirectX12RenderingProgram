@@ -14,7 +14,11 @@ public:
 	Model(_In_ const std::filesystem::path& filePath);
 	virtual ~Model() = default;
 
-	virtual HRESULT Initialize();
+	virtual HRESULT Initialize(
+		_In_ ComPtr<ID3D12Device>& pDevice,
+		_In_ ComPtr<ID3D12CommandQueue>& pCommandQueue,
+		_In_ ComPtr<ID3D12DescriptorHeap>& pSrvHeap
+	) override;
 	virtual void Update(_In_ FLOAT deltaTime) override;
 
 	UINT GetNumVertices() const override;

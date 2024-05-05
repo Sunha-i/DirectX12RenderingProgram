@@ -14,11 +14,7 @@ Renderer::Renderer()
 	, m_uRtvDescriptorSize(0)
 	, m_uFrameIndex(0)
 	, m_hFenceEvent()
-	, m_pVertexBuffer()
-	, m_pIndexBuffer()
 	, m_pTextureResource()
-	, m_vertexBufferView()
-	, m_indexBufferView()
 	, m_worldMatrix()
 	, m_viewMatrix()
 	, m_projectionMatrix()
@@ -538,127 +534,6 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 		return hr;
 	}
 
-	// Create the vertex buffer
-	{
-		Vertex cubeVertices[] =
-		{
-			{ XMFLOAT3(-1.0f, 1.0f, -1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
-			{ XMFLOAT3(1.0f, 1.0f, -1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
-			{ XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
-			{ XMFLOAT3(-1.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
-
-			{ XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
-			{ XMFLOAT3(1.0f, -1.0f, -1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
-			{ XMFLOAT3(1.0f, -1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
-			{ XMFLOAT3(-1.0f, -1.0f, 1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
-
-			{ XMFLOAT3(-1.0f, -1.0f, 1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
-			{ XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
-			{ XMFLOAT3(-1.0f, 1.0f, -1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
-			{ XMFLOAT3(-1.0f, 1.0f, 1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
-
-			{ XMFLOAT3(1.0f, -1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
-			{ XMFLOAT3(1.0f, -1.0f, -1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
-			{ XMFLOAT3(1.0f, 1.0f, -1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
-			{ XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
-
-			{ XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
-			{ XMFLOAT3(1.0f, -1.0f, -1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
-			{ XMFLOAT3(1.0f, 1.0f, -1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
-			{ XMFLOAT3(-1.0f, 1.0f, -1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
-
-			{ XMFLOAT3(-1.0f, -1.0f, 1.0f), XMFLOAT2(1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
-			{ XMFLOAT3(1.0f, -1.0f, 1.0f), XMFLOAT2(0.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
-			{ XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT2(0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
-			{ XMFLOAT3(-1.0f, 1.0f, 1.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
-		};
-		const UINT vertexBufferSize = sizeof(cubeVertices);
-
-		// Create committed resource for vertex buffer
-		const CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
-		const CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize);
-		hr = m_pDevice->CreateCommittedResource(
-			&heapProperties,
-			D3D12_HEAP_FLAG_NONE,
-			&resourceDesc,
-			D3D12_RESOURCE_STATE_GENERIC_READ,
-			nullptr,
-			IID_PPV_ARGS(&m_pVertexBuffer)
-		);
-		if (FAILED(hr))
-		{
-			return hr;
-		}
-
-		// Copy the cube data to the vertex buffer
-		UINT8* pVertexDataBegin;
-		CD3DX12_RANGE readRange(0, 0);
-		hr = m_pVertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin));
-		if (FAILED(hr))
-		{
-			return hr;
-		}
-		memcpy(pVertexDataBegin, cubeVertices, vertexBufferSize);
-		m_pVertexBuffer->Unmap(0, nullptr);
-
-		// Initialize the vertex buffer view
-		m_vertexBufferView =
-		{
-			.BufferLocation = m_pVertexBuffer->GetGPUVirtualAddress(),
-			.SizeInBytes = vertexBufferSize,
-			.StrideInBytes = sizeof(Vertex),
-		};
-	}
-
-	// Create the index buffer
-	{
-		static WORD cubeIndices[] =
-		{	
-			 3,  1,  0,  2,  1,  3,		// TOP
-			 6,  4,  5,  7,  4,  6,		// BOTTOM
-			11,  9,  8, 10,  9, 11,		// LEFT
-			14, 12, 13, 15, 12, 14,		// RIGHT
-			19, 17, 16, 18, 17, 19,		// FRONT
-			22, 20, 21, 23, 20, 22,		// BACK
-		};
-		const UINT indexBufferSize = sizeof(cubeIndices);
-
-		// Create committed resource for index buffer
-		const CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_UPLOAD);
-		const CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize);
-		hr = m_pDevice->CreateCommittedResource(
-			&heapProperties,
-			D3D12_HEAP_FLAG_NONE,
-			&resourceDesc,
-			D3D12_RESOURCE_STATE_GENERIC_READ,
-			nullptr,
-			IID_PPV_ARGS(&m_pIndexBuffer)
-		);
-		if (FAILED(hr))
-		{
-			return hr;
-		}
-
-		// Copy array of index data to upload buffer
-		UINT8* pIndexDataBegin;
-		CD3DX12_RANGE readRange(0, 0);
-		hr = m_pIndexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pIndexDataBegin));
-		if (FAILED(hr))
-		{
-			return hr;
-		}
-		memcpy(pIndexDataBegin, cubeIndices, indexBufferSize);
-		m_pIndexBuffer->Unmap(0, nullptr);
-
-		// Initialize the index buffer view
-		m_indexBufferView =
-		{
-			.BufferLocation = m_pIndexBuffer->GetGPUVirtualAddress(),
-			.SizeInBytes = indexBufferSize,
-			.Format = DXGI_FORMAT_R16_UINT,
-		};
-	}
-
 	// Loads a texture, upload resources to the GPU
 	{
 		// start recording upload commands
@@ -789,6 +664,11 @@ void Renderer::Render()
 	}
 	cb.OutputColor = m_vOutputColor;
 
+	for (auto it = m_umRenderables.begin(); it != m_umRenderables.end(); ++it)
+	{
+		it->second->Initialize(m_pDevice, m_pCommandQueue, m_pSrvHeap);
+	}
+
 	// Set the constants for the first draw call
 	memcpy(&m_mappedConstantData[constantBufferIndex], &cb, sizeof(ConstantBuffer));
 
@@ -816,19 +696,16 @@ void Renderer::Render()
 
 	// Set up the input assembler
 	m_pCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	m_pCommandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
-	m_pCommandList->IASetIndexBuffer(&m_indexBufferView);
-
-	// Draw the first cube
-	m_pCommandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
-	baseGpuAddress += sizeof(ConstantBuffer);
-	++constantBufferIndex;
-
+	
 	// Render each light
 	m_pCommandList->SetPipelineState(m_pSolidPipelineState.Get());
 
 	for (auto it = m_umRenderables.begin(); it != m_umRenderables.end(); ++it)
 	{
+		// Set buffers
+		m_pCommandList->IASetVertexBuffers(0, 1, it->second->GetVertexBufferView());
+		m_pCommandList->IASetIndexBuffer(it->second->GetIndexBufferView());
+
 		// Update the world variable to reflect the current light
 		cb.World = XMMatrixTranspose(it->second->GetWorldMatrix());
 		cb.OutputColor = it->second->GetOutputColor();
@@ -839,7 +716,7 @@ void Renderer::Render()
 		// Bind the constants to the shader
 		m_pCommandList->SetGraphicsRootConstantBufferView(0, baseGpuAddress);
 
-		// Draw the second cube
+		// Draw the light cube
 		m_pCommandList->DrawIndexedInstanced(it->second->GetNumIndices(), 1, 0, 0, 0);
 		baseGpuAddress += sizeof(ConstantBuffer);
 		++constantBufferIndex;
