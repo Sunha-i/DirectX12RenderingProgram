@@ -10,6 +10,13 @@ HRESULT BaseCube::Initialize(
 	_In_ ComPtr<ID3D12CommandQueue>& pCommandQueue,
 	_In_ ComPtr<ID3D12DescriptorHeap>& pSrvHeap
 ){
+	BasicMeshEntry basicMeshEntry;
+	basicMeshEntry.uNumIndices = NUM_INDICES;
+	basicMeshEntry.uMaterialIndex = 0u;
+
+	m_aMeshes.push_back(basicMeshEntry);
+	m_aMaterials.push_back(Material());
+
 	return initialize(pDevice);
 }
 

@@ -31,4 +31,52 @@ protected:
 
 	const Vertex* getVertices() const override;
 	const WORD* getIndices() const override;
+
+	HRESULT initFromScene(
+		_In_ ComPtr<ID3D12Device>& pDevice,
+		_In_ ComPtr<ID3D12CommandQueue>& pCommandQueue,
+		_In_ ComPtr<ID3D12DescriptorHeap>& pSrvHeap,
+		_In_ const aiScene* pScene,
+		_In_ const std::filesystem::path& filePath
+	);
+
+	void countVerticesAndIndices(_Inout_ UINT& uOutNumVertices, _Inout_ UINT& uOutNumIndices, _In_ const aiScene* pScene);
+	void reserveSpace(_In_ UINT uNumVertices, _In_ UINT uNumIndices);
+	void initAllMeshes(_In_ const aiScene* pScene);
+	void initSingleMesh(_In_ const aiMesh* pMesh);
+
+	HRESULT initMaterials(
+		_In_ ComPtr<ID3D12Device>& pDevice,
+		_In_ ComPtr<ID3D12CommandQueue>& pCommandQueue,
+		_In_ ComPtr<ID3D12DescriptorHeap>& pSrvHeap,
+		_In_ const aiScene* pScene,
+		_In_ const std::filesystem::path& filePath
+	);
+
+	HRESULT loadTextures(
+		_In_ ComPtr<ID3D12Device>& pDevice,
+		_In_ ComPtr<ID3D12CommandQueue>& pCommandQueue,
+		_In_ ComPtr<ID3D12DescriptorHeap>& pSrvHeap,
+		_In_ const std::filesystem::path& parentDirectory,
+		_In_ const aiMaterial* pMaterial,
+		_In_ UINT uIndex
+	);
+
+	HRESULT loadDiffuseTexture(
+		_In_ ComPtr<ID3D12Device>& pDevice,
+		_In_ ComPtr<ID3D12CommandQueue>& pCommandQueue,
+		_In_ ComPtr<ID3D12DescriptorHeap>& pSrvHeap,
+		_In_ const std::filesystem::path& parentDirectory,
+		_In_ const aiMaterial* pMaterial, _In_ UINT uIndex
+	);
+
+	HRESULT loadSpecularTexture(
+		_In_ ComPtr<ID3D12Device>& pDevice,
+		_In_ ComPtr<ID3D12CommandQueue>& pCommandQueue,
+		_In_ ComPtr<ID3D12DescriptorHeap>& pSrvHeap,
+		_In_ const std::filesystem::path& parentDirectory,
+		_In_ const aiMaterial* pMaterial, _In_ UINT uIndex
+	);
+
+	void loadColors(_In_ const aiMaterial* pMaterial, _In_ UINT uIndex);
 };

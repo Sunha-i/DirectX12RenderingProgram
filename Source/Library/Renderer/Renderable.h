@@ -3,9 +3,27 @@
 #include "Common.h"
 
 #include "Renderer/DataTypes.h"
+#include "Material/Material.h"
 
 class Renderable
 {
+public:
+	static constexpr const UINT INVALID_MATERIAL = (0xFFFFFFFF);
+
+protected:
+	struct BasicMeshEntry {
+		BasicMeshEntry()
+			: uNumIndices(0u)
+			, uBaseVertex(0u)
+			, uBaseIndex(0u)
+			, uMaterialIndex(INVALID_MATERIAL)
+		{}
+		UINT uNumIndices;
+		UINT uBaseVertex;
+		UINT uBaseIndex;
+		UINT uMaterialIndex;
+	};
+
 public:
 	Renderable(_In_ const XMFLOAT4& outputColor);
 	Renderable(const Renderable& other) = delete;
@@ -48,6 +66,9 @@ protected:
 	ComPtr<ID3D12Resource> m_pIndexBuffer;
 	D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
 	D3D12_INDEX_BUFFER_VIEW m_indexBufferView;
+
+	std::vector<BasicMeshEntry> m_aMeshes;
+	std::vector<Material> m_aMaterials;
 
 	XMFLOAT4 m_vOutputColor;
 	XMMATRIX m_mWorld;
