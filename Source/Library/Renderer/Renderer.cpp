@@ -562,6 +562,11 @@ HRESULT Renderer::InitDevice(_In_ HWND hWnd)
 		m_pDevice->CreateShaderResourceView(m_pTextureResource.Get(), &srvDesc, m_pSrvHeap->GetCPUDescriptorHandleForHeapStart());
 	}
 
+	for (auto it = m_umRenderables.begin(); it != m_umRenderables.end(); ++it)
+	{
+		it->second->Initialize(m_pDevice, m_pCommandQueue, m_pSrvHeap);
+	}
+
 	// Create synchronization objects
 	{
 		hr = m_pDevice->CreateFence(m_auFenceValues[m_uFrameIndex], D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(m_pFence.ReleaseAndGetAddressOf()));
@@ -642,9 +647,6 @@ void Renderer::Render()
 	// Set the graphics RS to be used by this frame
 	m_pCommandList->SetGraphicsRootSignature(m_pRootSignature.Get());
 
-	ID3D12DescriptorHeap* ppHeaps[] = { m_pSrvHeap.Get() };
-	m_pCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-	m_pCommandList->SetGraphicsRootDescriptorTable(1, m_pSrvHeap->GetGPUDescriptorHandleForHeapStart());
 	m_pCommandList->RSSetViewports(1, &m_viewport);
 	m_pCommandList->RSSetScissorRects(1, &m_scissorRect);
 
@@ -663,11 +665,6 @@ void Renderer::Render()
 		cb.LightColors[i] = m_apPointLights[i]->GetColor();
 	}
 	cb.OutputColor = m_vOutputColor;
-
-	for (auto it = m_umRenderables.begin(); it != m_umRenderables.end(); ++it)
-	{
-		it->second->Initialize(m_pDevice, m_pCommandQueue, m_pSrvHeap);
-	}
 
 	// Set the constants for the first draw call
 	memcpy(&m_mappedConstantData[constantBufferIndex], &cb, sizeof(ConstantBuffer));
@@ -717,9 +714,22 @@ void Renderer::Render()
 		m_pCommandList->SetGraphicsRootConstantBufferView(0, baseGpuAddress);
 
 		// Draw the light cube
-		m_pCommandList->DrawIndexedInstanced(it->second->GetNumIndices(), 1, 0, 0, 0);
-		baseGpuAddress += sizeof(ConstantBuffer);
-		++constantBufferIndex;
+		if (it->second->HasTexture())
+		{
+			for (UINT i = 0u; i < it->second->GetNumMeshes(); ++i) {
+				UINT uMaterialIndex = it->second->GetMesh(i).uMaterialIndex;
+
+				assert(uMaterialIndex < it->second->GetNumMaterials());
+
+				// Render a triangle
+				m_pCommandList->DrawIndexedInstanced(
+					it->second->GetMesh(i).uNumIndices, 1,
+					it->second->GetMesh(i).uBaseIndex,
+					static_cast<INT>(it->second->GetMesh(i).uBaseVertex), 0);
+			}
+			baseGpuAddress += sizeof(ConstantBuffer);
+			++constantBufferIndex;
+		}
 	}
 
 	// Indicate that the back buffer will now be used to present

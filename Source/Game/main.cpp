@@ -37,6 +37,9 @@ INT WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 
     // Stone Model
     std::shared_ptr<Model> stoneGolem = std::make_shared<Model>(L"../../Data/Stone/Stone.obj");
+    stoneGolem->Scale(0.5f, 0.5f, 0.5f);
+    if (FAILED(game->GetRenderer()->AddRenderable(L"StoneGolem", stoneGolem)))
+        return 0;
 
     if (FAILED(game->Initialize(hInstance, nCmdShow)))
     {

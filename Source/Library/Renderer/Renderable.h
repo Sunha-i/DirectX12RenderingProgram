@@ -44,6 +44,10 @@ public:
 	const XMMATRIX& GetWorldMatrix() const;
 	const XMFLOAT4& GetOutputColor() const;
 
+	BOOL HasTexture() const;
+	const Material& GetMaterial(UINT uIndex);
+	const BasicMeshEntry& GetMesh(UINT uIndex);
+
 	void RotateX(_In_ FLOAT angle);
 	void RotateY(_In_ FLOAT angle);
 	void RotateZ(_In_ FLOAT angle);
@@ -53,6 +57,9 @@ public:
 
 	virtual UINT GetNumVertices() const = 0;
 	virtual UINT GetNumIndices() const = 0;
+
+	UINT GetNumMeshes() const;
+	UINT GetNumMaterials() const;
 
 protected:
 	virtual const Vertex* getVertices() const = 0;

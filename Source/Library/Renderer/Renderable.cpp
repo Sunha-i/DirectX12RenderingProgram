@@ -132,6 +132,32 @@ const XMFLOAT4& Renderable::GetOutputColor() const
 	return m_vOutputColor;
 }
 
+BOOL Renderable::HasTexture() const
+{
+	if (m_aMaterials.size() > 0)
+	{
+		return TRUE;
+	}
+	else
+	{
+		return FALSE;
+	}
+}
+
+const Material& Renderable::GetMaterial(UINT uIndex)
+{
+	assert(uIndex < GetNumMaterials());
+
+	return m_aMaterials[uIndex];
+}
+
+const Renderable::BasicMeshEntry& Renderable::GetMesh(UINT uIndex)
+{
+	assert(uIndex < GetNumMeshes());
+
+	return m_aMeshes[uIndex];
+}
+
 void Renderable::RotateX(_In_ FLOAT angle)
 {
 	m_mWorld *= XMMatrixRotationX(angle);
@@ -160,4 +186,14 @@ void Renderable::Scale(_In_ FLOAT scaleX, _In_ FLOAT scaleY, _In_ FLOAT scaleZ)
 void Renderable::Translate(_In_ const XMVECTOR& offset)
 {
 	m_mWorld *= XMMatrixTranslationFromVector(offset);
+}
+
+UINT Renderable::GetNumMeshes() const
+{
+	return static_cast<UINT>(m_aMeshes.size());
+}
+
+UINT Renderable::GetNumMaterials() const
+{
+	return static_cast<UINT>(m_aMaterials.size());
 }

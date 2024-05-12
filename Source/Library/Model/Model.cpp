@@ -68,7 +68,7 @@ HRESULT Model::initFromScene(
 	hr = initMaterials(pDevice, pCommandQueue, pSrvHeap, pScene, filePath);
 	if (FAILED(hr))
 		return hr;
-	hr = Initialize(pDevice, pCommandQueue, pSrvHeap);
+	hr = initialize(pDevice);
 	if (FAILED(hr))
 		return hr;
 
